@@ -12,7 +12,7 @@ to benefit from supply chain disruptions.
 
 **Owner:** Tony (antv311)
 **Repo:** https://github.com/antv311/StackScreener
-**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter
+**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter, Textual
 
 ---
 
@@ -33,7 +33,8 @@ Disruption detected → Affected sectors identified → Fundamentals screened �
 ## UI Design (Decided — April 2026)
 
 The app has three top-level sections in a left sidebar: **Home**, **Research**, **Logistics**.
-See UI mockup screenshots in the repo root for reference.
+See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
+`Mock_up/Prototype/stackscreener_full_ui_prototype.html`.
 
 ### Home
 - Full-width market heatmap (tiles color-coded by % change, sized by market cap)
@@ -92,8 +93,8 @@ Layer 4 — Output (Phase 1: Desktop App)
   app.py (Textual TUI)          → interactive terminal app matching the UI design above
   pdf_generator.py              → CSV + PDF reports to Results/ directory
 
-Layer 5 — Output (Phase 2: Web App)
-  Flask or FastAPI backend      → [FUTURE]
+Layer 5 — Output (Phase 5: Web App)
+  FastAPI backend               → [FUTURE]
   REST API                      → [FUTURE]
 ```
 
@@ -104,7 +105,7 @@ Layer 5 — Output (Phase 2: Web App)
 ```
 StackScreener/
 ├── src/
-│   ├── screener.py                 ← core scoring engine (built from scratch)
+│   ├── screener.py                 ← core scoring engine
 │   ├── screener_run.py             ← scan runner / CLI entry point
 │   ├── screener_config.py          ← ALL constants, weights, thresholds, DEBUG_MODE
 │   ├── screener_post_processing.py ← normalized scoring output
@@ -114,6 +115,10 @@ StackScreener/
 │   ├── pdf_generator.py            ← PDF reports (fpdf2)
 │   ├── mailer.py                   ← email delivery
 │   └── Results/                    ← scan output (gitignored)
+├── Mock_up/
+│   ├── *.jpg                       ← UI mockup screenshots
+│   └── Prototype/
+│       └── stackscreener_full_ui_prototype.html
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← phased development plan

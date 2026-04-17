@@ -1,0 +1,417 @@
+
+<style>
+.ss{display:flex;height:700px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;font-family:var(--font-sans)}
+.ss-sb{width:148px;min-width:148px;background:var(--color-background-secondary);border-right:0.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;padding:10px}
+.ss-logo{font-size:14px;font-weight:500;padding:6px 8px 12px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:8px;letter-spacing:-0.3px}
+.ss-logo span{color:var(--color-text-info)}
+.ss-nv{padding:7px 10px;border-radius:var(--border-radius-md);border:none;background:transparent;color:var(--color-text-secondary);font-size:13px;cursor:pointer;text-align:left;width:100%;display:block;margin-bottom:2px}
+.ss-nv:hover{background:var(--color-background-tertiary);color:var(--color-text-primary)}
+.ss-nv.on{background:var(--color-background-info);color:var(--color-text-info)}
+.ss-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.ss-top{padding:8px 14px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:6px;min-height:44px;background:var(--color-background-secondary)}
+.ss-tab{padding:4px 11px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:transparent;color:var(--color-text-secondary);font-size:12px;cursor:pointer;white-space:nowrap}
+.ss-tab:hover{background:var(--color-background-tertiary)}
+.ss-tab.on{background:var(--color-background-info);border-color:var(--color-border-info);color:var(--color-text-info)}
+.ss-body{flex:1;overflow:auto}
+.pg{display:none}.pg.on{display:block}
+.sp{display:none}.sp.on{display:block}
+.hm-g{display:grid;grid-template-columns:repeat(20,1fr);gap:2px;height:370px;padding:12px}
+.hm-c{border-radius:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
+.hm-c:hover{filter:brightness(1.12)}
+.idx-b{padding:9px 14px;border-top:0.5px solid var(--color-border-tertiary);display:flex;gap:14px;align-items:center;background:var(--color-background-secondary);font-size:12px}
+.idx-b label{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--color-text-secondary)}
+.scf{padding:7px 12px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;flex-wrap:wrap;gap:5px;background:var(--color-background-secondary)}
+.scf select{font-size:11px;padding:3px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer}
+.dt{width:100%;border-collapse:collapse;font-size:11px}
+.dt th{padding:6px 10px;text-align:left;font-size:10px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);position:sticky;top:0;cursor:pointer;font-weight:500;white-space:nowrap}
+.dt td{padding:5px 10px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono);white-space:nowrap}
+.dt tr:hover td{background:var(--color-background-secondary)}
+.tc{color:var(--color-text-info);font-weight:500}
+.pos{color:var(--color-text-success)}
+.neg{color:var(--color-text-danger)}
+.pk-c{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin:0 12px 8px;overflow:hidden}
+.pk-c.open{border-color:var(--color-border-info)}
+.pk-h{padding:11px 14px;display:flex;align-items:center;gap:11px;cursor:pointer}
+.pk-logo{width:30px;height:30px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--color-text-secondary);font-family:var(--font-mono);flex-shrink:0}
+.pk-sc{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0;font-family:var(--font-mono);background:var(--color-background-success);color:var(--color-text-success)}
+.pk-d{display:none;border-top:0.5px solid var(--color-border-tertiary);padding:10px 14px;background:var(--color-background-secondary)}
+.sr{display:grid;grid-template-columns:108px 1fr 36px;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px}
+.sr:last-child{border-bottom:none}
+.cw{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin:12px;border-radius:var(--border-radius-md);overflow:hidden;border:0.5px solid var(--color-border-tertiary)}
+.cd{background:var(--color-background-secondary);padding:7px}
+.cd.td .cdn{color:var(--color-text-info);font-weight:500}
+.cdl{font-size:9px;color:var(--color-text-secondary);text-transform:uppercase;font-family:var(--font-mono)}
+.cdn{font-size:11px;font-family:var(--font-mono);margin:2px 0 5px}
+.cev{font-size:9px;padding:1px 4px;border-radius:2px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ee{background:var(--color-background-success);color:var(--color-text-success)}
+.es{background:var(--color-background-info);color:var(--color-text-info)}
+.ei{background:var(--color-background-warning);color:var(--color-text-warning)}
+.cg{display:grid;grid-template-columns:155px repeat(4,1fr);gap:1px;background:var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin:12px}
+.cc{background:var(--color-background-primary);padding:5px 10px;font-size:11px;font-family:var(--font-mono)}
+.cs{background:var(--color-background-secondary);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--color-text-secondary);grid-column:1/-1;padding:5px 10px}
+.cl{color:var(--color-text-secondary);font-family:var(--font-sans)}
+.rc{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:13px 15px;margin:10px 12px 5px;cursor:pointer}
+.rc:hover{border-color:var(--color-border-secondary)}
+.bdg{display:inline-flex;padding:1px 6px;border-radius:3px;font-size:10px;font-family:var(--font-mono);margin:1px}
+.br{background:var(--color-background-danger);color:var(--color-text-danger)}
+.bg{background:var(--color-background-success);color:var(--color-text-success)}
+.ba{background:var(--color-background-warning);color:var(--color-text-warning)}
+.bi{background:var(--color-background-info);color:var(--color-text-info)}
+.lh{padding:10px 14px;border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px;color:var(--color-text-secondary)}
+</style>
+
+<div class="ss">
+<nav class="ss-sb">
+  <div class="ss-logo">Stack<span>Screener</span></div>
+  <button class="ss-nv on" data-p="home">&#127968; Home</button>
+  <button class="ss-nv" data-p="research">&#128300; Research</button>
+  <button class="ss-nv" data-p="logistics">&#127758; Logistics</button>
+  <div style="margin-top:auto;font-size:10px;color:var(--color-text-secondary);padding:4px 8px;font-family:var(--font-mono)">v0.1.0 · 2026</div>
+</nav>
+<div class="ss-main">
+  <div class="ss-top" id="sstop"><span style="font-size:13px;font-weight:500">Market Overview</span></div>
+  <div class="ss-body">
+
+    <div class="pg on" id="pg-home">
+      <div style="padding:10px 12px 4px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:10px;color:var(--color-text-secondary);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.5px">S&P 500 Heatmap</span>
+        <span style="font-size:10px;color:var(--color-text-secondary);font-family:var(--font-mono)">Apr 17, 2026 · 4:00PM ET</span>
+      </div>
+      <div class="hm-g" id="hmg"></div>
+      <div class="idx-b">
+        <span style="font-size:10px;color:var(--color-text-secondary);font-family:var(--font-mono)">INDEX:</span>
+        <label><input type="radio" name="idx" checked> S&P 500</label>
+        <label><input type="radio" name="idx"> DOW</label>
+        <label><input type="radio" name="idx"> Russell 1000</label>
+        <label><input type="radio" name="idx"> &#9733; Recommended</label>
+        <label><input type="radio" name="idx"> All</label>
+      </div>
+    </div>
+
+    <div class="pg" id="pg-research">
+      <div class="sp on" id="sp-screener">
+        <div class="scf">
+          <select><option>Exchange: Any</option><option>NYSE</option><option>NASDAQ</option></select>
+          <select><option>Sector: Any</option><option>Technology</option><option>Healthcare</option><option>Financials</option><option>Energy</option><option>Industrials</option></select>
+          <select><option>Market Cap: Any</option><option>Mega &gt;200B</option><option>Large 10B+</option><option>Mid 2B+</option><option>Small</option></select>
+          <select><option>P/E: Any</option><option>&lt;15</option><option>15–25</option><option>25–50</option><option>&gt;50</option></select>
+          <select><option>Signal: All Stocks</option><option>Supply Chain Picks</option><option>Congress Buys</option><option>Dark Pool Alert</option></select>
+        </div>
+        <table class="dt"><thead><tr><th>#</th><th>Ticker</th><th>Company</th><th>Sector</th><th>MCap</th><th>P/E</th><th>Price</th><th>Chg %</th><th>Volume</th><th>Score</th></tr></thead><tbody id="scrbody"></tbody></table>
+      </div>
+      <div class="sp" id="sp-calendar">
+        <div style="padding:8px 12px;display:flex;gap:4px">
+          <button class="ss-tab on">All Events</button><button class="ss-tab">Earnings</button><button class="ss-tab">Splits</button><button class="ss-tab">IPOs</button><button class="ss-tab">Economic</button>
+        </div>
+        <div class="cw" id="calweek"></div>
+        <table class="dt"><thead><tr><th>Symbol</th><th>Company</th><th>Event</th><th>Date</th><th>Detail</th></tr></thead><tbody id="calbody"></tbody></table>
+      </div>
+      <div class="sp" id="sp-comparison">
+        <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;font-weight:500">Compare Stocks</span>
+          <span style="font-size:11px;color:var(--color-text-secondary);margin-left:auto">&#9650; Highs &amp; &#9660; Lows highlighted</span>
+        </div>
+        <div class="cg" id="cmpgrid"></div>
+      </div>
+      <div class="sp" id="sp-picks">
+        <div style="margin:12px;padding:9px 12px;background:var(--color-background-info);border-radius:var(--border-radius-md);font-size:12px;color:var(--color-text-info)">
+          Top picks scored across Unusual Whales, Quiver Quant, Yahoo Finance and Motley Fool. Expand any card for the full source breakdown.
+        </div>
+        <div id="pickslist"></div>
+      </div>
+      <div class="sp" id="sp-reports"><div id="rptlist"></div></div>
+    </div>
+
+    <div class="pg" id="pg-logistics">
+      <div class="lh">Logistic reports: stocks impacted by supply chain issues and where companies may redirect to fill the gap. Click a pin to filter.</div>
+      <div style="padding:10px 12px">
+        <svg viewBox="0 0 1000 440" style="width:100%;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary)" id="wsvg">
+          <rect width="1000" height="440" fill="var(--color-background-secondary)"/>
+          <line x1="0" y1="220" x2="1000" y2="220" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>
+          <line x1="500" y1="0" x2="500" y2="440" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>
+          <polygon points="33,44 139,69 153,100 175,141 194,162 250,175 264,194 283,199 328,194 333,106 311,104 353,104 347,92 322,65 272,44 222,16 111,16" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="250,8 310,4 340,26 300,44 265,35" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="270,194 328,194 361,211 403,231 403,268 383,268 319,352 297,344 278,303 278,231" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="472,131 508,131 542,126 578,126 600,116 583,104 567,102 556,85 542,78 514,78 508,82 486,112 472,112" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="514,78 542,78 545,61 535,48 525,52 514,65" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="457,92 469,88 474,101 464,105 454,98" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="453,155 542,153 617,166 642,175 642,227 617,248 597,304 550,304 453,286" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="575,44 792,44 890,87 903,133 847,165 792,211 772,211 756,183 700,165 658,165 603,131 575,87" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="690,165 730,165 720,209 700,218 680,200" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="756,192 788,192 783,228 756,232 746,213" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="866,122 886,118 891,135 871,140 861,131" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <polygon points="651,271 695,257 756,264 758,288 758,309 695,312 653,298" fill="var(--color-border-secondary)" stroke="var(--color-border-primary)" stroke-width="0.8"/>
+          <g id="epins"></g>
+        </svg>
+      </div>
+      <div style="border-top:0.5px solid var(--color-border-tertiary)">
+        <div style="padding:5px 14px;font-size:10px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.5px;font-family:var(--font-mono)">Active Supply Chain Disruptions</div>
+        <div style="overflow:auto;max-height:190px">
+          <table class="dt"><thead><tr><th>Region / Event</th><th>Impacted</th><th>Cannot Provide</th><th>Will Redirect To</th><th>Severity</th></tr></thead><tbody id="logibody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+const HM=[
+  {t:'MSFT',c:2.42,cl:3,rw:2},{t:'AAPL',c:3.30,cl:4,rw:2},{t:'AMZN',c:1.84,cl:3,rw:2},
+  {t:'GOOGL',c:0.92,cl:3,rw:2},{t:'META',c:1.24,cl:2,rw:1},{t:'NFLX',c:-0.68,cl:2,rw:1},
+  {t:'NVDA',c:1.27,cl:3,rw:2},{t:'AVGO',c:1.25,cl:2,rw:1},{t:'TSLA',c:5.00,cl:2,rw:2},
+  {t:'TSM',c:1.25,cl:2,rw:2},{t:'JPM',c:0.89,cl:2,rw:2},{t:'WMT',c:0.13,cl:2,rw:2},
+  {t:'XOM',c:-5.21,cl:2,rw:2},{t:'CVX',c:-4.41,cl:2,rw:1},{t:'LLY',c:7.38,cl:2,rw:2},
+  {t:'JNJ',c:0.37,cl:2,rw:1},{t:'BAC',c:1.33,cl:1,rw:1},{t:'BRK',c:0.86,cl:2,rw:1},
+  {t:'AMD',c:-0.32,cl:1,rw:1},{t:'INTC',c:1.48,cl:1,rw:1},{t:'COST',c:0.06,cl:1,rw:1},
+  {t:'PEP',c:-0.39,cl:1,rw:1},{t:'KO',c:-0.99,cl:1,rw:1},{t:'PG',c:-0.62,cl:1,rw:1},
+  {t:'GE',c:1.70,cl:1,rw:1},{t:'CAT',c:0.80,cl:1,rw:1},{t:'DE',c:0.30,cl:1,rw:1},
+  {t:'HON',c:0.50,cl:1,rw:1},{t:'MU',c:0.64,cl:1,rw:1},{t:'V',c:0.55,cl:1,rw:1},
+  {t:'MA',c:0.68,cl:1,rw:1},{t:'MS',c:1.44,cl:1,rw:1},{t:'GS',c:0.78,cl:1,rw:1},
+];
+const SCR=[
+  {n:1,t:'NVDA',co:'NVIDIA Corporation',s:'Technology',mc:'$2.18T',pe:'35.2',pr:'$875.43',ch:'+1.27%',v:'42.3M',sc:92},
+  {n:2,t:'MSFT',co:'Microsoft Corporation',s:'Technology',mc:'$2.87T',pe:'31.4',pr:'$415.20',ch:'+2.42%',v:'28.1M',sc:88},
+  {n:3,t:'AAPL',co:'Apple Inc.',s:'Technology',mc:'$3.12T',pe:'28.1',pr:'$196.35',ch:'+3.30%',v:'61.2M',sc:85},
+  {n:4,t:'LLY',co:'Eli Lilly & Co.',s:'Healthcare',mc:'$743B',pe:'52.1',pr:'$812.50',ch:'+7.38%',v:'4.1M',sc:83},
+  {n:5,t:'TSM',co:'Taiwan Semiconductor',s:'Technology',mc:'$789B',pe:'22.1',pr:'$152.30',ch:'+1.25%',v:'11.7M',sc:87},
+  {n:6,t:'AMZN',co:'Amazon.com Inc.',s:'Consumer Disc.',mc:'$1.89T',pe:'38.7',pr:'$183.21',ch:'+1.84%',v:'33.7M',sc:81},
+  {n:7,t:'GOOGL',co:'Alphabet Inc.',s:'Communication',mc:'$1.97T',pe:'23.4',pr:'$162.88',ch:'+0.92%',v:'22.8M',sc:79},
+  {n:8,t:'TSLA',co:'Tesla Inc.',s:'Consumer Disc.',mc:'$892B',pe:'67.3',pr:'$282.40',ch:'+5.00%',v:'89.4M',sc:74},
+  {n:9,t:'JPM',co:'JPMorgan Chase',s:'Financials',mc:'$583B',pe:'12.1',pr:'$197.30',ch:'+0.89%',v:'15.2M',sc:75},
+  {n:10,t:'XOM',co:'Exxon Mobil Corp.',s:'Energy',mc:'$451B',pe:'14.2',pr:'$107.20',ch:'-5.21%',v:'27.6M',sc:61},
+  {n:11,t:'AVGO',co:'Broadcom Inc.',s:'Technology',mc:'$672B',pe:'29.3',pr:'$145.80',ch:'+1.25%',v:'19.1M',sc:84},
+  {n:12,t:'WMT',co:'Walmart Inc.',s:'Consumer Staples',mc:'$781B',pe:'33.2',pr:'$96.50',ch:'+0.13%',v:'12.4M',sc:70},
+  {n:13,t:'META',co:'Meta Platforms Inc.',s:'Communication',mc:'$1.26T',pe:'25.8',pr:'$497.60',ch:'+1.24%',v:'18.3M',sc:77},
+  {n:14,t:'CVX',co:'Chevron Corporation',s:'Energy',mc:'$276B',pe:'13.8',pr:'$143.60',ch:'-4.41%',v:'14.3M',sc:58},
+  {n:15,t:'JNJ',co:'Johnson & Johnson',s:'Healthcare',mc:'$398B',pe:'16.7',pr:'$152.40',ch:'+0.37%',v:'8.9M',sc:72},
+];
+const PKS=[
+  {t:'NVDA',n:'NVIDIA Corporation',pr:'$875.43',sc:92,src:[
+    {nm:'Quiver Quant',r:'14 senators disclosed buys averaging $450K in Q1 2026.',s:95},
+    {nm:'Unusual Whales',r:'Call volume 3.2x 30-day avg. Large block buys detected at $850 strike.',s:90},
+    {nm:'Yahoo Finance',r:'Beat Q4 by 18%. Data center revenue +142% YoY. Guidance raised.',s:88},
+    {nm:'Motley Fool',r:'Top AI infrastructure pick — 4 of 5 Stock Advisor recs this month.',s:94},
+  ]},
+  {t:'LLY',n:'Eli Lilly and Company',pr:'$812.50',sc:88,src:[
+    {nm:'Quiver Quant',r:'3 senators disclosed buys in Feb. GLP-1 lobbying spend up 40% YoY.',s:82},
+    {nm:'Unusual Whales',r:'Consistent institutional accumulation over 6 weeks. Put/call at 12-mo low.',s:86},
+    {nm:'Yahoo Finance',r:'Mounjaro/Zepbound sales beat estimates by $2.1B. 12 Phase III drugs in pipeline.',s:92},
+    {nm:'Motley Fool',r:'Strong long-term GLP-1 market dominance and international expansion thesis.',s:89},
+  ]},
+  {t:'TSM',n:'Taiwan Semiconductor Mfg.',pr:'$152.30',sc:84,src:[
+    {nm:'Quiver Quant',r:'CHIPS Act beneficiary. 8 tech-committee members disclosed positions.',s:88},
+    {nm:'Unusual Whales',r:'Large block purchases at $145. Options activity bullish 3:1.',s:80},
+    {nm:'Yahoo Finance',r:'AI packaging demand outpacing capacity. 3nm yield improving sharply.',s:85},
+    {nm:'Motley Fool',r:'Irreplaceable supply chain position. Key disruption beneficiary.',s:82},
+  ]},
+];
+const LOGI=[
+  {id:1,reg:'Red Sea / Suez Canal',ev:'Houthi shipping attacks',x:607,y:187,imp:['MAERSK','ZIM','EXPD'],cant:'Suez Canal route (blocked)',go:['PANR','JBHT','CHRW'],sev:'HIGH'},
+  {id:2,reg:'Taiwan Strait',ev:'Military tensions — chip supply risk',x:840,y:153,imp:['AAPL','NVDA','AMD'],cant:'TSMC (supply constrained)',go:['INTC','QCOM','TXN'],sev:'CRITICAL'},
+  {id:3,reg:'Panama Canal',ev:'Drought — reduced water levels',x:258,y:201,imp:['CAT','DE','GE'],cant:'Panama Canal Authority',go:['XPO','ODFL','SAIA'],sev:'MEDIUM'},
+  {id:4,reg:'Rotterdam Port',ev:'Labor strike — EU logistics',x:499,y:91,imp:['SHEL','BP','TTE'],cant:'Port workers (striking)',go:['HAL','SLB','PTEN'],sev:'MEDIUM'},
+  {id:5,reg:'Shanghai / Yangtze',ev:'Factory shutdowns — EV components',x:845,y:139,imp:['TSLA','GM','RIVN'],cant:'CATL / BYD suppliers',go:['LGES','LEA','APTV'],sev:'HIGH'},
+  {id:6,reg:'Los Angeles Port',ev:'Union slowdown risk',x:166,y:139,imp:['WMT','COST','TGT'],cant:'ILWU dockworkers',go:['UPS','FDX','EXPD'],sev:'LOW'},
+];
+const CAL={
+  days:[
+    {d:'Mon',dt:'Apr 13',evs:[{k:'e',l:'GS Earnings'},{k:'e',l:'JPM Earnings'}]},
+    {d:'Tue',dt:'Apr 14',evs:[{k:'e',l:'NFLX Earnings'},{k:'i',l:'Klarna IPO'}]},
+    {d:'Wed',dt:'Apr 15',evs:[{k:'e',l:'ASML Earnings'},{k:'s',l:'NVDA 2:1 Split'}]},
+    {d:'Thu',dt:'Apr 16',evs:[{k:'e',l:'TSM Earnings'},{k:'e',l:'UNH Earnings'}]},
+    {d:'Fri',dt:'Apr 17',evs:[{k:'s',l:'AAPL 4:1 Split'},{k:'e',l:'AMEX Earnings'}]},
+    {d:'Sat',dt:'Apr 18',evs:[]},{d:'Sun',dt:'Apr 19',evs:[]},
+  ],
+  rows:[
+    {sym:'GS',co:'Goldman Sachs',ev:'Q1 Earnings',dt:'Apr 13',det:'EPS Est: $9.44'},
+    {sym:'JPM',co:'JPMorgan Chase',ev:'Q1 Earnings',dt:'Apr 13',det:'EPS Est: $4.61'},
+    {sym:'NFLX',co:'Netflix Inc.',ev:'Q1 Earnings',dt:'Apr 14',det:'EPS Est: $5.72'},
+    {sym:'KLRN',co:'Klarna Group',ev:'IPO',dt:'Apr 14',det:'Range: $68–72'},
+    {sym:'ASML',co:'ASML Holding',ev:'Q1 Earnings',dt:'Apr 15',det:'EPS Est: €6.12'},
+    {sym:'NVDA',co:'NVIDIA Corp',ev:'2:1 Stock Split',dt:'Apr 15',det:'Record: Apr 10'},
+    {sym:'TSM',co:'Taiwan Semi',ev:'Q1 Earnings',dt:'Apr 16',det:'EPS Est: $1.82'},
+    {sym:'AAPL',co:'Apple Inc.',ev:'4:1 Stock Split',dt:'Apr 17',det:'Record: Apr 8'},
+  ]
+};
+
+function hmClr(c){
+  if(c>4)return'#15803d';if(c>2)return'#16a34a';if(c>1)return'#22c55e';
+  if(c>0)return'#4ade80';if(c===0)return'#6b7280';if(c>-1)return'#fca5a5';
+  if(c>-2)return'#f87171';if(c>-3)return'#ef4444';return'#991b1b';
+}
+function hmTxt(c){return Math.abs(c)<2&&c>0?'#14532d':'rgba(255,255,255,0.95)';}
+
+function bldHM(){
+  document.getElementById('hmg').innerHTML=HM.map(d=>{
+    const fs=d.cl>=3?'13px':d.cl>=2?'10px':'9px';
+    const sign=d.c>0?'+':'';
+    return`<div class="hm-c" style="grid-column:span ${d.cl};grid-row:span ${d.rw};background:${hmClr(d.c)}" title="${d.t}: ${sign}${d.c}%"><span style="font-family:var(--font-mono);font-size:${fs};font-weight:500;color:${hmTxt(d.c)};line-height:1">${d.t}</span><span style="font-family:var(--font-mono);font-size:8px;color:${hmTxt(d.c)};margin-top:2px;opacity:.85">${sign}${d.c}%</span></div>`;
+  }).join('');
+}
+
+function bldSCR(){
+  document.getElementById('scrbody').innerHTML=SCR.map(d=>{
+    const pos=d.ch.startsWith('+');
+    const sc=d.sc;
+    const sc_clr=sc>80?'var(--color-text-success)':sc>65?'var(--color-text-warning)':'var(--color-text-danger)';
+    return`<tr><td style="color:var(--color-text-secondary)">${d.n}</td><td class="tc">${d.t}</td><td>${d.co}</td><td style="color:var(--color-text-secondary)">${d.s}</td><td>${d.mc}</td><td>${d.pe}</td><td style="font-weight:500">${d.pr}</td><td class="${pos?'pos':'neg'}">${d.ch}</td><td>${d.v}</td><td style="display:flex;align-items:center;gap:5px"><div style="flex:1;background:var(--color-border-tertiary);border-radius:2px;height:3px"><div style="width:${sc}%;height:100%;background:${sc_clr}"></div></div><span style="color:${sc_clr};font-size:10px">${sc}</span></td></tr>`;
+  }).join('');
+}
+
+function bldPKS(){
+  document.getElementById('pickslist').innerHTML=PKS.map((p,i)=>`
+    <div class="pk-c" id="pkc${i}">
+      <div class="pk-h" onclick="tpk(${i})">
+        <div class="pk-logo">${p.t.slice(0,3)}</div>
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--color-text-info);min-width:44px">${p.t}</span>
+        <span style="font-size:12px;flex:1;color:var(--color-text-primary)">${p.n}</span>
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:500;min-width:68px;text-align:right">${p.pr}</span>
+        <div class="pk-sc">${p.sc}</div>
+        <span style="font-size:11px;color:var(--color-text-secondary);transition:transform .2s" id="pka${i}">&#9660;</span>
+      </div>
+      <div class="pk-d" id="pkd${i}">${p.src.map(s=>`<div class="sr"><span style="color:var(--color-text-secondary);font-family:var(--font-mono)">${s.nm}</span><span style="color:var(--color-text-primary)">${s.r}</span><span class="pos" style="font-family:var(--font-mono);font-weight:500;text-align:right">${s.s}</span></div>`).join('')}</div>
+    </div>`).join('');
+}
+
+function tpk(i){
+  const d=document.getElementById('pkd'+i);
+  const a=document.getElementById('pka'+i);
+  const c=document.getElementById('pkc'+i);
+  const op=d.style.display==='none'||d.style.display==='';
+  d.style.display=op?'block':'none';
+  a.style.transform=op?'rotate(180deg)':'rotate(0)';
+  c.classList.toggle('open',op);
+}
+
+function bldCAL(){
+  const km={e:'ee',s:'es',i:'ei'};
+  document.getElementById('calweek').innerHTML=CAL.days.map((d,i)=>`<div class="cd ${i===4?'td':''}"><div class="cdl">${d.d}</div><div class="cdn">${d.dt}</div>${d.evs.map(e=>`<div class="cev ${km[e.k]}">${e.l}</div>`).join('')}</div>`).join('');
+  document.getElementById('calbody').innerHTML=CAL.rows.map(r=>`<tr><td class="tc">${r.sym}</td><td>${r.co}</td><td>${r.ev}</td><td style="color:var(--color-text-secondary)">${r.dt}</td><td style="color:var(--color-text-secondary)">${r.det}</td></tr>`).join('');
+}
+
+function bldCMP(){
+  const stocks=['NVDA','MSFT','AAPL','TSM'];
+  const M=[
+    {s:'Valuation',rows:[
+      {l:'Market Cap',v:['$2.18T','$2.87T','$3.12T','$789B']},
+      {l:'P/E Ratio',v:['35.2','31.4','28.1','22.1'],hi:[0],lo:[3]},
+      {l:'EPS (TTM)',v:['$24.87','$13.22','$6.99','$6.87']},
+      {l:'Fwd Dividend',v:['0.03%','0.72%','0.55%','1.84%'],lo:[0],hi:[3]},
+    ]},
+    {s:'Performance',rows:[
+      {l:'1 Week',v:['+8.2%','+4.1%','+6.3%','+3.8%'],hi:[0],lo:[3]},
+      {l:'YTD',v:['+38.4%','+15.2%','+24.1%','+11.3%'],hi:[0],lo:[3]},
+      {l:'1 Year',v:['+87.3%','+34.2%','+41.8%','+28.9%'],hi:[0],lo:[3]},
+    ]},
+    {s:'Fundamentals',rows:[
+      {l:'Revenue TTM',v:['$60.9B','$227.6B','$386.0B','$88.1B']},
+      {l:'Rev Growth YoY',v:['+122%','+16%','+9%','+31%'],hi:[0],lo:[2]},
+      {l:'Gross Margin',v:['74.8%','69.4%','45.6%','53.2%'],hi:[0],lo:[2]},
+    ]},
+  ];
+  let h=`<div class="cc cl" style="padding:7px 10px;font-size:10px">As of Apr 17, 2026</div>`;
+  stocks.forEach(s=>h+=`<div class="cc" style="font-weight:500;color:var(--color-text-info)">${s}</div>`);
+  M.forEach(sec=>{
+    h+=`<div class="cs">${sec.s}</div>`;
+    sec.rows.forEach(row=>{
+      h+=`<div class="cc cl">${row.l}</div>`;
+      row.v.forEach((v,vi)=>{
+        const isH=row.hi&&row.hi.includes(vi);
+        const isL=row.lo&&row.lo.includes(vi);
+        const clr=isH?'var(--color-text-success)':isL?'var(--color-text-danger)':'var(--color-text-primary)';
+        h+=`<div class="cc" style="color:${clr};font-weight:${isH||isL?500:400}">${isH?'&#9650; ':isL?'&#9660; ':''}${v}</div>`;
+      });
+    });
+  });
+  document.getElementById('cmpgrid').innerHTML=h;
+}
+
+function bldRPT(){
+  const rpts=[
+    {tag:'ba',lbl:'Supply Chain',dt:'Apr 17',title:'Red Sea Crisis: 14 Shipping Stocks Positioned to Benefit from Route Diversification',sum:'As Houthi attacks continue disrupting Suez Canal traffic, Cape of Good Hope volumes are up 340%. We surface the top freight and logistics companies capturing rerouted volume, with full fundamental scoring.'},
+    {tag:'bg',lbl:'Fundamentals',dt:'Apr 15',title:'Semiconductor Earnings Preview: TSM, NVDA, ASML Signal AI Capex Supercycle Intact',sum:'Ahead of Q1 results, all three score top-decile across EV/EBITDA, CFO ratio, and PEG. Supply chain intelligence shows no near-term disruption risk to Taiwan-based nodes.'},
+    {tag:'bi',lbl:'Inst. Flow',dt:'Apr 14',title:'Congress Watch: 22 Trades Filed This Week — Defense and AI the Clear Themes',sum:'Quiver Quant data shows 22 congressional trades over the past 5 days. Defense contractors and AI infrastructure plays dominate. We cross-reference with supply chain thesis and SSS scores.'},
+    {tag:'ba',lbl:'Supply Chain',dt:'Apr 11',title:'Panama Canal Drought: Nearshoring Beneficiaries in Mexico and US Manufacturing',sum:'Water levels at Gatun Lake are 30% below seasonal average, cutting throughput capacity 40%. We analyze which US and Mexican manufacturers are absorbing rerouted demand.'},
+  ];
+  document.getElementById('rptlist').innerHTML=rpts.map(r=>`
+    <div class="rc">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="bdg ${r.tag}">${r.lbl}</span>
+        <span style="font-size:11px;color:var(--color-text-secondary);font-family:var(--font-mono)">${r.dt}, 2026</span>
+      </div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:5px;line-height:1.4">${r.title}</div>
+      <div style="font-size:12px;color:var(--color-text-secondary);line-height:1.5">${r.sum}</div>
+    </div>`).join('');
+}
+
+const sevClr={CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#eab308',LOW:'#3b82f6'};
+let selEv=null;
+
+function bldLOGI(){
+  document.getElementById('epins').innerHTML=LOGI.map(e=>`
+    <g onclick="selEv2(${e.id})" style="cursor:pointer" id="ep${e.id}">
+      <circle cx="${e.x}" cy="${e.y}" r="14" fill="${sevClr[e.sev]}" opacity="0.12"/>
+      <circle cx="${e.x}" cy="${e.y}" r="5" fill="${sevClr[e.sev]}" opacity="0.9"/>
+      <circle cx="${e.x}" cy="${e.y}" r="5" fill="none" stroke="${sevClr[e.sev]}" stroke-width="1.5" opacity="0">
+        <animate attributeName="r" from="5" to="18" dur="2.5s" repeatCount="indefinite" begin="${e.id*.4}s"/>
+        <animate attributeName="opacity" from="0.7" to="0" dur="2.5s" repeatCount="indefinite" begin="${e.id*.4}s"/>
+      </circle>
+    </g>`).join('');
+  renderLogi(null);
+}
+
+function selEv2(id){selEv=selEv===id?null:id;renderLogi(selEv);}
+
+function renderLogi(filt){
+  const data=filt?LOGI.filter(e=>e.id===filt):LOGI;
+  const sevTag={CRITICAL:'br',HIGH:'ba',MEDIUM:'bi',LOW:'bg'};
+  document.getElementById('logibody').innerHTML=data.map(e=>`
+    <tr style="cursor:pointer${selEv===e.id?';background:var(--color-background-info)':''}" onclick="selEv2(${e.id})">
+      <td><div style="font-weight:500;font-size:11px">${e.reg}</div><div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px">${e.ev}</div></td>
+      <td>${e.imp.map(t=>`<span class="bdg br">${t}</span>`).join('')}</td>
+      <td style="color:var(--color-text-secondary);font-size:11px">${e.cant}</td>
+      <td>${e.go.map(t=>`<span class="bdg bg">${t}</span>`).join('')}</td>
+      <td><span class="bdg ${sevTag[e.sev]}">${e.sev}</span></td>
+    </tr>`).join('');
+}
+
+const RTABS=[
+  {id:'screener',lbl:'Screener'},{id:'calendar',lbl:'Calendar'},
+  {id:'comparison',lbl:'Stock Comparison'},{id:'picks',lbl:'Stock Picks'},
+  {id:'reports',lbl:'Research Reports'},
+];
+let curPg='home', curSub='screener';
+
+document.querySelectorAll('.ss-nv').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    const p=this.dataset.p;
+    curPg=p;
+    document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
+    document.getElementById('pg-'+p).classList.add('on');
+    document.querySelectorAll('.ss-nv').forEach(x=>x.classList.remove('on'));
+    this.classList.add('on');
+    const tb=document.getElementById('sstop');
+    if(p==='research'){
+      tb.innerHTML=RTABS.map(t=>`<button class="ss-tab ${t.id===curSub?'on':''}" onclick="swSub('${t.id}')">${t.lbl}</button>`).join('');
+    } else if(p==='home'){
+      tb.innerHTML='<span style="font-size:13px;font-weight:500">Market Overview</span>';
+    } else {
+      tb.innerHTML='<span style="font-size:13px;font-weight:500">Logistics Intelligence</span>';
+    }
+  });
+});
+
+function swSub(s){
+  curSub=s;
+  document.querySelectorAll('.sp').forEach(x=>x.classList.remove('on'));
+  document.getElementById('sp-'+s).classList.add('on');
+  const found=RTABS.find(t=>t.id===s);
+  document.querySelectorAll('#sstop .ss-tab').forEach(b=>{
+    b.classList.toggle('on',b.textContent.trim()===found?.lbl);
+  });
+}
+
+bldHM();bldSCR();bldPKS();bldCAL();bldCMP();bldRPT();bldLOGI();
+</script>
