@@ -46,15 +46,22 @@ Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up
 | Data | yfinance, yahooquery |
 | Technical analysis | pandas-ta (installed `--no-deps`) |
 | Database | SQLite via `db.py` |
-| Terminal UI | Textual |
-| PDF reports | fpdf2 |
+| Encryption | cryptography (Fernet) + keyring (OS keyring) |
+| Terminal UI | Textual *(planned)* |
+| PDF reports | fpdf2 *(planned)* |
 | FX conversion | CurrencyConverter |
 
 ---
 
 ## Project Status
 
-Currently in **Phase 0** — environment setup and foundation.
+**Phase 0 — backend foundation complete.**
+
+- Database layer (`db.py`) — 12 tables, full CRUD, encrypted API key storage
+- Encryption (`crypto.py`) — Fernet via OS keyring, PBKDF2 password hashing
+- Data pipeline — `seeder.py` seeds the full NYSE/NASDAQ universe; `enricher.py` fills in fundamentals in the background
+
+**Up next:** scoring engine (`screener.py` + `screener_run.py`)
 
 See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 
@@ -69,15 +76,51 @@ See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 ```bash
 # Create venv
 python -m venv venv_ss
-source venv_ss/bin/activate  # Windows: venv_ss\Scripts\activate
+source venv_ss/bin/activate   # Windows: venv_ss\Scripts\activate
 
-# Install C-extension build tools first (Windows — Chocolatey)
+# Install C-extension build tools (Windows — Chocolatey)
 # choco install pkgconfiglite
 
 # Install dependencies
 pip install -r requirements.txt
 pip install pandas-ta --no-deps
 ```
+
+---
+
+## Database Initialization
+
+```bash
+# Initialize schema and seed default admin user only (safe to run first to verify)
+python src/seeder.py --schema-only
+
+# Fetch full NYSE + NASDAQ universe (~8,000+ tickers)
+python src/seeder.py
+
+# Test with a small batch first
+python src/seeder.py --limit 50
+```
+
+Default login after seeding: **admin / admin** — you will be prompted to change this on first launch.
+
+---
+
+## Data Enrichment
+
+The seeder populates ticker symbols and prices. Full fundamentals are filled in by the enricher:
+
+```bash
+# Run enrichment (processes all unenriched stocks, 0.5s between requests)
+python src/enricher.py
+
+# Test run — enrich 20 stocks then stop
+python src/enricher.py --limit 20
+
+# Check for upcoming IPOs only (also runs automatically at the start of each enricher run)
+python src/enricher.py --ipo-only
+```
+
+The enricher is safe to kill and restart — progress is committed per stock.
 
 ---
 
@@ -96,14 +139,18 @@ Scan output is written to `Results/<scan_mode>/<datetime>/` (gitignored).
 ```
 StackScreener/
 ├── src/
-│   ├── screener.py             ← scoring engine
-│   ├── screener_run.py         ← CLI entry point
-│   ├── screener_config.py      ← all constants, weights, thresholds
+│   ├── screener_config.py      ← all constants, weights, thresholds, status strings
 │   ├── db.py                   ← SQLite layer (all DB access here)
-│   ├── supply_chain.py         ← disruption ingestion + sector mapping
-│   ├── app.py                  ← Textual TUI
-│   ├── pdf_generator.py        ← PDF reports (fpdf2)
-│   └── mailer.py               ← email delivery
+│   ├── crypto.py               ← encryption + password hashing
+│   ├── seeder.py               ← one-time DB init + universe fetch
+│   ├── enricher.py             ← background fundamentals worker
+│   ├── screener.py             ← scoring engine           [next]
+│   ├── screener_run.py         ← CLI entry point          [next]
+│   ├── supply_chain.py         ← disruption ingestion     [planned]
+│   ├── app.py                  ← Textual TUI              [planned]
+│   ├── pdf_generator.py        ← PDF reports              [planned]
+│   └── mailer.py               ← email delivery           [planned]
+├── sql_tables/                 ← canonical SQL table definitions
 ├── Mock_up/                    ← UI mockups + HTML prototype
 ├── CONTEXT.md                  ← full project context (read first)
 ├── CLAUDE.md                   ← coding conventions

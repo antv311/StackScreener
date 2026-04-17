@@ -9,7 +9,7 @@ phase is active before writing any code.
 ## Project Identity
 
 - **Repo:** https://github.com/antv311/StackScreener
-- **Built from scratch** — this is NOT a fork of asafravid/sss
+- **Built from scratch**
 - **Runtime:** Python 3.14.2 only
 - **venv name:** `venv_ss`
 - **DB file:** `stackscreener.db`
@@ -45,6 +45,8 @@ Never introduce these — they are banned:
 | Raw `print()` for debug | `if DEBUG_MODE: print(...)` |
 | Raw SQL outside `db.py` | All DB access goes through `db.py` only |
 | String-formatted SQL | Always use parameterized queries (`?`) |
+| Plaintext API keys anywhere | Always encrypted via `db.set_api_key()` |
+| `crypto.encrypt/decrypt` outside `db.py` | Only `db.py` calls crypto directly |
 
 ---
 
@@ -54,10 +56,13 @@ Each file owns exactly one concern. Do not cross these boundaries.
 
 | File | Owns |
 |---|---|
-| `screener_config.py` | ALL constants, weights, thresholds, scoring config, `DEBUG_MODE` |
+| `screener_config.py` | ALL constants, weights, thresholds, status strings, provider names, `DEBUG_MODE` |
+| `db.py` | All SQLite reads/writes — no other file touches the DB |
+| `crypto.py` | Fernet encryption + OS keyring key management + password hashing |
+| `seeder.py` | One-time schema init, default user seed, NYSE/NASDAQ universe fetch |
+| `enricher.py` | Background fundamentals worker + daily IPO calendar check |
 | `screener.py` | Core scoring logic only — no hardcoded magic numbers |
 | `screener_run.py` | CLI entry point and scan orchestration only |
-| `db.py` | All SQLite reads/writes — no other file touches the DB |
 | `supply_chain.py` | Supply chain signal ingestion and sector mapping only |
 | `app.py` | Desktop TUI (Textual) — UI only, no business logic |
 | `pdf_generator.py` | PDF output only — fpdf2 API |
@@ -67,16 +72,28 @@ Each file owns exactly one concern. Do not cross these boundaries.
 
 ## Database Conventions
 
-- All PKs: `tablename_uid` (e.g. `stock_uid`, `scan_uid`, `watchlist_uid`, `event_uid`)
+- All PKs: `tablename_uid` (e.g. `stock_uid`, `scan_uid`, `watchlist_uid`)
 - All DB access through `db.py` — never raw SQL in other modules
 - Always use parameterized queries — never f-string or format SQL
-- Staleness tracking on `stock_financials` — check before fetching fresh data
-- `supply_chain_events` table tracks active disruptions with affected/beneficiary sectors
+- Staleness tracked via `last_enriched_at` on `stocks` — enricher checks this
+- All status/type string values come from constants in `screener_config.py`
 
 Watchlist query pattern (canonical):
 ```python
-db.query("SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1", (wl_id,))
+db.get_watchlist_stocks(watchlist_uid)
+# → SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1
 ```
+
+---
+
+## Security Conventions
+
+- API keys are stored encrypted in the `api_keys` table via `db.set_api_key()`
+- Retrieve with `db.get_api_key(user_uid, provider_name)` — returns plaintext only in memory
+- Fernet master key lives in the OS keyring, never on disk or in code
+- Passwords hashed with PBKDF2-HMAC-SHA256, 260k iterations, random per-user salt
+- Default admin account (`admin/admin`) must force password change on first login
+- `totp_secret` column on `users` is reserved for future 2FA — do not populate yet
 
 ---
 
@@ -146,10 +163,11 @@ stackscreener.db
 
 1. Check `ROADMAP.md` — confirm it's in scope for the current phase
 2. Config/constants → `screener_config.py`
-3. DB changes → `db.py` (add a migration function if schema changes)
-4. Business logic → appropriate module (`screener.py`, `supply_chain.py`, etc.)
-5. UI changes → `app.py` only
-6. Update `CONTEXT.md` if the architecture or file structure changes
+3. DB changes → `db.py` (update `init_db()` + add helpers; update `sql_tables/` to match)
+4. Encryption/auth changes → `crypto.py` only
+5. Business logic → appropriate module (`screener.py`, `supply_chain.py`, etc.)
+6. UI changes → `app.py` only
+7. Update `CONTEXT.md` if the architecture or file structure changes
 
 ---
 
@@ -158,6 +176,8 @@ stackscreener.db
 - Don't refactor code that isn't broken unless it's explicitly in scope
 - Don't add dependencies without verifying Python 3.14 compatibility first
 - Don't write to the DB from anywhere except `db.py`
-- Don't hardcode tickers, weights, or thresholds outside `screener_config.py`
+- Don't call `crypto.py` functions from anywhere except `db.py`
+- Don't hardcode tickers, weights, thresholds, or status strings outside `screener_config.py`
 - Don't commit `.db` files or scan results
 - Don't reorganize the UI navigation without confirming the change first
+- Don't store API keys or secrets in flat files, env vars, or source code

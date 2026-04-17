@@ -12,7 +12,7 @@ to benefit from supply chain disruptions.
 
 **Owner:** Tony (antv311)
 **Repo:** https://github.com/antv311/StackScreener
-**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter, Textual
+**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter, Textual, cryptography, keyring
 
 ---
 
@@ -74,47 +74,70 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 
 ```
 Layer 1 — Data Sources
-  yfinance / yahooquery         → price, fundamentals, financials
-  Quiver Quant API              → congressional trades, lobbying, gov contracts  [PLANNED]
-  Unusual Whales API            → dark pool, options flow, institutional flow     [PLANNED]
-  worldmonitor-osint / other    → geopolitical / supply chain disruption signals  [PLANNED]
+  yfinance                       → price, fundamentals (primary)
+  yahooquery                     → detailed financials (supplement)
+  Yahoo Finance Screener API     → full NYSE/NASDAQ universe enumeration
+  Yahoo Finance Calendar API     → upcoming IPOs (daily check)
+  Quiver Quant API               → congressional trades, lobbying, gov contracts  [PLANNED]
+  Unusual Whales API             → dark pool, options flow, institutional flow     [PLANNED]
+  worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
-  SQLite via stackscreener.db   → stocks, watchlists, indices, scan_results,
-                                   stock_financials, supply_chain_events,
-                                   index_refresh_log
+  SQLite via stackscreener.db    → 12 tables (see schema below)
+  API keys encrypted via Fernet, master key stored in OS keyring
 
-Layer 3 — Scoring Engine
-  screener.py                   → EV/R, PE, EV/EBITDA, profit margin, PEG,
-                                   debt/equity, CFO ratio, Altman Z-score
-  Multi-dimensional scan        → weighted scoring across time periods
+Layer 3 — Data Pipeline
+  seeder.py                      → one-time schema init + NYSE/NASDAQ universe seed
+  enricher.py                    → rate-limited background worker; fills fundamentals,
+                                   daily IPO calendar check via Yahoo Finance
 
-Layer 4 — Output (Phase 1: Desktop App)
-  app.py (Textual TUI)          → interactive terminal app matching the UI design above
-  pdf_generator.py              → CSV + PDF reports to Results/ directory
+Layer 4 — Scoring Engine
+  screener.py                    → EV/R, PE, EV/EBITDA, profit margin, PEG,
+                                   debt/equity, CFO ratio, Altman Z-score        [NEXT]
+  screener_run.py                → scan orchestration + CLI entry point          [NEXT]
 
-Layer 5 — Output (Phase 5: Web App)
-  FastAPI backend               → [FUTURE]
-  REST API                      → [FUTURE]
+Layer 5 — Output (Phase 1: Desktop App)
+  app.py (Textual TUI)           → interactive terminal app matching the UI design above  [PLANNED]
+  pdf_generator.py               → CSV + PDF reports to Results/ directory                [PLANNED]
+
+Layer 6 — Output (Phase 5: Web App)
+  FastAPI backend                → [FUTURE]
+  REST API                       → [FUTURE]
 ```
 
 ---
 
-## Project File Structure (target)
+## Project File Structure
 
 ```
 StackScreener/
 ├── src/
-│   ├── screener.py                 ← core scoring engine
-│   ├── screener_run.py             ← scan runner / CLI entry point
-│   ├── screener_config.py          ← ALL constants, weights, thresholds, DEBUG_MODE
-│   ├── screener_post_processing.py ← normalized scoring output
+│   ├── screener_config.py          ← ALL constants, weights, thresholds, status values, DEBUG_MODE
 │   ├── db.py                       ← SQLite layer — ALL DB access goes here only
+│   ├── crypto.py                   ← Fernet encryption (OS keyring) + password hashing
+│   ├── seeder.py                   ← one-time schema init + NYSE/NASDAQ universe fetch
+│   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
+│   ├── screener.py                 ← core scoring engine                        [NEXT]
+│   ├── screener_run.py             ← scan runner / CLI entry point              [NEXT]
+│   ├── screener_post_processing.py ← normalized scoring output                  [PLANNED]
 │   ├── supply_chain.py             ← supply chain signal ingestion + sector mapping [PLANNED]
-│   ├── app.py                      ← desktop TUI entry point (Textual)             [PLANNED]
-│   ├── pdf_generator.py            ← PDF reports (fpdf2)
-│   ├── mailer.py                   ← email delivery
+│   ├── app.py                      ← desktop TUI entry point (Textual)          [PLANNED]
+│   ├── pdf_generator.py            ← PDF reports (fpdf2)                        [PLANNED]
+│   ├── mailer.py                   ← email delivery                             [PLANNED]
 │   └── Results/                    ← scan output (gitignored)
+├── sql_tables/                     ← canonical SQL table definitions (reference)
+│   ├── users.sql
+│   ├── watchlists.sql
+│   ├── stocks.sql
+│   ├── api_keys.sql
+│   ├── portfolio.sql
+│   ├── scans.sql
+│   ├── scan_results.sql
+│   ├── supply_chain_events.sql
+│   ├── event_stocks.sql
+│   ├── calendar_events.sql
+│   ├── source_signals.sql
+│   └── research_reports.sql
 ├── Mock_up/
 │   ├── *.jpg                       ← UI mockup screenshots
 │   └── Prototype/
@@ -123,31 +146,57 @@ StackScreener/
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← phased development plan
 ├── requirements.txt
-├── requirements-compiled.txt       ← C extension build notes for Python 3.14
 └── README.md
 ```
 
 ---
 
-## Database Schema (db.py)
+## Database Schema
 
-All primary keys follow the `tablename_uid` convention.
+All primary keys follow the `tablename_uid` convention. All tables live in `stackscreener.db`
+and are created by `db.init_db()`. All access goes through `db.py` only.
 
 | Table | Purpose |
 |---|---|
-| `watchlists` | Named watchlists |
-| `stocks` | All tracked symbols; `watchlist_uid` + `is_watched` embedded for simple queries |
-| `indices` | Market index definitions |
-| `stock_financials` | Per-symbol financial data with staleness tracking |
-| `scans` | Scan run metadata |
-| `scan_results` | Individual symbol results per scan |
-| `supply_chain_events` | Active disruption events: region, severity, affected/beneficiary sectors |
-| `index_refresh_log` | Tracks when indices were last refreshed |
+| `users` | User accounts — password hash + salt, admin flag, force-change flag, totp_secret (2FA prep) |
+| `watchlists` | Named watchlists, attached to a user via `user_uid` |
+| `stocks` | All tracked symbols — descriptive, fundamental, technical fields + `last_enriched_at` |
+| `api_keys` | Fernet-encrypted API credentials per user/provider |
+| `portfolio` | User holdings (Plaid-ready: quantity, avg_cost, plaid_account_id) |
+| `scans` | Scan run metadata (mode, status, counts, timestamps) |
+| `scan_results` | Per-symbol scored results for each scan run |
+| `supply_chain_events` | Active disruption events with lat/lon, severity, affected/beneficiary sectors |
+| `event_stocks` | Junction: which stocks are impacted or benefit from each event |
+| `calendar_events` | Earnings, splits, IPOs, economic events — upcoming IPOs pre-seeded here |
+| `source_signals` | Per-stock signals from Quiver Quant, Unusual Whales, Yahoo, Motley Fool |
+| `research_reports` | Long-form research content tagged by type |
 
 Watchlist query pattern:
 ```sql
 SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1
 ```
+
+Enrichment staleness check:
+```sql
+SELECT * FROM stocks WHERE last_enriched_at IS NULL
+   OR last_enriched_at < datetime('now', '-1 days')
+```
+
+---
+
+## Security — API Keys & Passwords
+
+**API keys** are stored encrypted in the `api_keys` table. Encryption uses Fernet symmetric
+encryption (`cryptography` library). The master key is stored in the OS keyring:
+- Windows → Windows Credential Manager
+- macOS → macOS Keychain
+- Linux → SecretService (GNOME Keyring / KWallet)
+
+`db.set_api_key()` / `db.get_api_key()` handle encrypt/decrypt transparently.
+Never call `crypto.encrypt()` / `crypto.decrypt()` directly from outside `db.py`.
+
+**Passwords** are hashed with PBKDF2-HMAC-SHA256 (260,000 iterations, random per-user salt).
+Default admin account: `admin / admin` — forced to change on first login.
 
 ---
 

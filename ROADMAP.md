@@ -1,6 +1,6 @@
 # StackScreener — Development Roadmap
 
-**Current Status:** Starting over. Environment needs to be rebuilt from scratch.
+**Current Status:** Phase 0 backend foundation complete. Next: scoring engine.
 **Last updated:** April 2026
 
 ---
@@ -13,7 +13,7 @@ is a real product. A half-finished web app is a liability.
 
 ---
 
-## Phase 0 — Environment & Foundation 🔄 REDO
+## Phase 0 — Environment & Foundation 🔄 IN PROGRESS
 
 Get a clean, working Python 3.14 environment with all dependencies resolved.
 
@@ -22,14 +22,16 @@ Get a clean, working Python 3.14 environment with all dependencies resolved.
 - [ ] Install pure-Python deps via `requirements.txt`
 - [ ] Verify `pandas-ta` installed with `--no-deps` (no numba)
 - [ ] Confirm `CurrencyConverter` in place of `forex-python`
-- [ ] Confirm `fpdf2` migration complete in `pdf_generator.py`
-- [ ] Apply all pandas 2.x compatibility fixes (`.ffill()`, `.bfill()`)
-- [ ] Apply all yahooquery Timestamp / `periodType` fixes
-- [ ] Move all constants to `screener_config.py`
-- [ ] Add `DEBUG_MODE = False` to `screener_config.py`
-- [ ] Wire `db.py` SQLite layer into scan flow
-- [ ] Confirm a full scan runs end-to-end without errors
-- [ ] Initialize git repo and push to GitHub
+- [ ] Confirm `fpdf2` in place of old fpdf
+- [x] `screener_config.py` — all constants, weights, thresholds, status strings, provider names
+- [x] `db.py` — full SQLite layer: 12 tables, CRUD helpers, upsert builders, batch ops
+- [x] `crypto.py` — Fernet encryption via OS keyring + PBKDF2 password hashing
+- [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch via Yahoo screener
+- [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check
+- [ ] Run `python src/seeder.py --schema-only` to verify schema creates clean
+- [ ] Run `python src/seeder.py --limit 20` to verify ticker fetch works
+- [ ] Run `python src/enricher.py --limit 10` to verify enrichment works
+- [ ] Confirm a full scan runs end-to-end without errors  ← blocked on screener.py
 
 **Exit criteria:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV + PDF.
 
@@ -43,7 +45,8 @@ Turn the screener into a usable standalone desktop application matching the agre
 
 - [ ] Create `app.py` as the Textual TUI entry point
 - [ ] Three-section sidebar: Home / Research / Logistics
-- [ ] Config management: load/save user settings (scan mode, market, thresholds)
+- [ ] Login screen — enforce password change for admin on first run
+- [ ] Config management: load/save user settings via `settings` table
 - [ ] Graceful error handling and user-friendly error messages
 
 ### 1b — Home Screen
@@ -70,7 +73,7 @@ Turn the screener into a usable standalone desktop application matching the agre
 - [ ] Add / remove symbols from watchlist via app
 - [ ] View watchlist with latest scores and prices
 - [ ] Import watchlist from CSV
-- [ ] Persist watchlist to `db.py`
+- [ ] Persist watchlist to `db.py` (user-scoped via `user_uid`)
 
 ### 1f — Results & History
 
@@ -123,7 +126,7 @@ Layer in smart money signals to validate or strengthen supply chain picks.
 
 - [ ] Integrate **Quiver Quant API** (congressional trades, lobbying, gov contracts)
 - [ ] Integrate **Unusual Whales API** (dark pool prints, options flow, institutional activity)
-- [ ] Add flow signal scores to `stock_financials` in DB
+- [ ] Store signals in `source_signals` table via `db.py`
 - [ ] Incorporate flow signals into final ranking (configurable weight in `screener_config.py`)
 - [ ] Confluence view: supply chain signal + institutional flow + fundamentals all aligned
 
@@ -153,7 +156,8 @@ Migrate the desktop app to a web interface. By this point the core logic is full
 - [ ] FastAPI backend
 - [ ] REST API wrapping scan engine and DB queries
 - [ ] Web dashboard: scan runner, results table, supply chain event feed, watchlist
-- [ ] User authentication
+- [ ] User authentication (multi-user, 2FA via stored `totp_secret`)
+- [ ] Plaid integration for live portfolio sync
 - [ ] Deploy to Ubuntu server
 
 **Exit criteria:** Full feature parity with the desktop app, accessible from a browser.
@@ -189,7 +193,9 @@ Migrate the desktop app to a web interface. By this point the core logic is full
 | `fpdf2` | PDF report generation | Replaced old fpdf |
 | `CurrencyConverter` | FX conversion | Replaced forex-python |
 | `textual` | Terminal UI | Phases 1–4 |
-| `requests` | HTTP fetches | Web data, news |
+| `requests` | HTTP fetches | IPO calendar, web data |
+| `cryptography` | Fernet encryption | API key storage |
+| `keyring` | OS keyring access | Fernet master key storage |
 | `sqlite3` | DB (stdlib) | No ORM needed |
 | `numpy` | Numerics | Compile from source |
 | `pandas` | DataFrames | Compile from source |
