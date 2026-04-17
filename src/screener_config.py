@@ -28,8 +28,23 @@ DEBT_EQUITY_MAX:    float = 2.0
 PEG_MAX:            float = 3.0
 
 # ── Scan Defaults ──────────────────────────────────────────────────────────────
-SCAN_TOP_N:         int   = 50
-STALENESS_DAYS:     int   = 1     # refresh stock_financials if older than this
+SCAN_TOP_N:      int = 50
+STALENESS_DAYS:  int = 1  # refresh stock_financials if older than this
+
+# ── Scan Status ────────────────────────────────────────────────────────────────
+SCAN_STATUS_RUNNING:  str = "running"
+SCAN_STATUS_COMPLETE: str = "complete"
+SCAN_STATUS_FAILED:   str = "failed"
+
+# ── Event Status ───────────────────────────────────────────────────────────────
+EVENT_STATUS_ACTIVE:     str = "active"
+EVENT_STATUS_RESOLVED:   str = "resolved"
+EVENT_STATUS_MONITORING: str = "monitoring"
+
+# ── Confidence Levels ──────────────────────────────────────────────────────────
+CONFIDENCE_HIGH:   str = "high"
+CONFIDENCE_MEDIUM: str = "medium"
+CONFIDENCE_LOW:    str = "low"
 
 # ── Supply Chain Severity Rank ─────────────────────────────────────────────────
 SEVERITY_RANK: dict[str, int] = {
@@ -38,3 +53,12 @@ SEVERITY_RANK: dict[str, int] = {
     "MEDIUM":   2,
     "LOW":      1,
 }
+
+# ── Attribution ────────────────────────────────────────────────────────────────
+DEFAULT_AUTHOR: str = "StackScreener"
+
+# ── API Providers ──────────────────────────────────────────────────────────────
+PROVIDER_FINVIZ:          str = "finviz"
+PROVIDER_UNUSUAL_WHALES:  str = "unusual_whales"
+PROVIDER_QUIVER_QUANT:    str = "quiver_quant"
+PROVIDER_PLAID:           str = "plaid"

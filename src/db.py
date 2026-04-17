@@ -1,8 +1,12 @@
-import json
 import sqlite3
-from typing import Any
 
-from screener_config import DB_PATH, DEBUG_MODE
+import crypto
+from screener_config import (
+    DB_PATH, DEBUG_MODE,
+    SCAN_STATUS_COMPLETE, SCAN_STATUS_FAILED,
+    EVENT_STATUS_ACTIVE, EVENT_STATUS_RESOLVED,
+    CONFIDENCE_MEDIUM, DEFAULT_AUTHOR,
+)
 
 
 # ── Connection ─────────────────────────────────────────────────────────────────
@@ -19,29 +23,61 @@ def _debug(msg: str) -> None:
         print(f"[db] {msg}")
 
 
+# ── SQL builders ───────────────────────────────────────────────────────────────
+
+def _build_upsert_sql(
+    table: str,
+    data: dict,
+    conflict_keys: tuple[str, ...],
+    pk: str | None = None,
+    refresh_timestamp: bool = False,
+) -> tuple[str, tuple]:
+    cols = [c for c in data if c != pk]
+    placeholders = ", ".join("?" * len(cols))
+    col_names = ", ".join(cols)
+    updates = ", ".join(f"{c} = excluded.{c}" for c in cols if c not in conflict_keys)
+    if refresh_timestamp:
+        updates += ", updated_at = datetime('now')"
+    sql = (
+        f"INSERT INTO {table} ({col_names}) VALUES ({placeholders}) "
+        f"ON CONFLICT({', '.join(conflict_keys)}) DO UPDATE SET {updates}"
+    )
+    return sql, tuple(data[c] for c in cols)
+
+
+def _build_insert_sql(table: str, data: dict, pk: str | None = None) -> tuple[str, tuple]:
+    cols = [c for c in data if c != pk]
+    placeholders = ", ".join("?" * len(cols))
+    col_names = ", ".join(cols)
+    return f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", tuple(data[c] for c in cols)
+
+
 # ── Low-level helpers ──────────────────────────────────────────────────────────
 
 def execute(sql: str, params: tuple = ()) -> int:
-    """Run a write statement. Returns lastrowid."""
     with _connect() as conn:
         cur = conn.execute(sql, params)
-        conn.commit()
         _debug(f"execute: {sql[:80]} | params={params}")
         return cur.lastrowid
 
 
-def query(sql: str, params: tuple = ()) -> list[dict]:
-    """Run a read statement. Returns list of row dicts."""
+def executemany(sql: str, params_list: list[tuple]) -> None:
     with _connect() as conn:
-        cur = conn.execute(sql, params)
+        conn.executemany(sql, params_list)
+        _debug(f"executemany: {sql[:80]} | rows={len(params_list)}")
+
+
+def query(sql: str, params: tuple = ()) -> list[dict]:
+    with _connect() as conn:
         _debug(f"query: {sql[:80]} | params={params}")
-        return [dict(row) for row in cur.fetchall()]
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
 
 def query_one(sql: str, params: tuple = ()) -> dict | None:
-    """Run a read statement. Returns first row or None."""
-    rows = query(sql, params)
-    return rows[0] if rows else None
+    with _connect() as conn:
+        _debug(f"query_one: {sql[:80]} | params={params}")
+        row = conn.execute(sql, params).fetchone()
+        return dict(row) if row else None
 
 
 # ── Schema ─────────────────────────────────────────────────────────────────────
@@ -50,10 +86,23 @@ def init_db() -> None:
     """Create all tables. Safe to call on every startup."""
     with _connect() as conn:
         conn.executescript("""
-            PRAGMA foreign_keys = ON;
+            CREATE TABLE IF NOT EXISTS users (
+                user_uid      INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                salt          TEXT NOT NULL,
+                display_name  TEXT,
+                email         TEXT,
+                is_admin               INTEGER NOT NULL DEFAULT 0,
+                force_password_change  INTEGER NOT NULL DEFAULT 0,
+                totp_secret   TEXT,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            );
 
             CREATE TABLE IF NOT EXISTS watchlists (
                 watchlist_uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid      INTEGER REFERENCES users(user_uid),
                 name          TEXT NOT NULL UNIQUE,
                 description   TEXT,
                 created_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -153,6 +202,28 @@ def init_db() -> None:
                 macro_signal TEXT,
 
                 UNIQUE(ticker, exchange)
+            );
+
+            CREATE TABLE IF NOT EXISTS api_keys (
+                api_uid   INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid  INTEGER NOT NULL REFERENCES users(user_uid),
+                name      TEXT NOT NULL,
+                api_key   TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_uid, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS portfolio (
+                portfolio_uid    INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid         INTEGER NOT NULL REFERENCES users(user_uid),
+                stock_uid        INTEGER NOT NULL REFERENCES stocks(stock_uid),
+                quantity         REAL,
+                avg_cost         REAL,
+                plaid_account_id TEXT,
+                added_at         TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_uid, stock_uid)
             );
 
             CREATE TABLE IF NOT EXISTS scans (
@@ -271,7 +342,6 @@ def init_db() -> None:
                 updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
             );
         """)
-        conn.commit()
     _debug("init_db complete")
 
 
@@ -300,17 +370,17 @@ def get_all_watchlists() -> list[dict]:
 
 def upsert_stock(data: dict) -> int:
     """Insert or update a stock keyed on (ticker, exchange). Returns stock_uid."""
-    cols = [c for c in data if c != "stock_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    updates = ", ".join(
-        f"{c} = excluded.{c}" for c in cols if c not in ("ticker", "exchange")
-    )
-    sql = (
-        f"INSERT INTO stocks ({col_names}) VALUES ({placeholders}) "
-        f"ON CONFLICT(ticker, exchange) DO UPDATE SET {updates}"
-    )
-    return execute(sql, tuple(data[c] for c in cols))
+    sql, params = _build_upsert_sql("stocks", data, ("ticker", "exchange"), pk="stock_uid")
+    return execute(sql, params)
+
+
+def upsert_stocks_batch(records: list[dict]) -> None:
+    """Batch upsert stocks. All dicts must have identical keys."""
+    if not records:
+        return
+    sql, _ = _build_upsert_sql("stocks", records[0], ("ticker", "exchange"), pk="stock_uid")
+    params_list = [_build_upsert_sql("stocks", r, ("ticker", "exchange"), pk="stock_uid")[1] for r in records]
+    executemany(sql, params_list)
 
 
 def get_stock(stock_uid: int) -> dict | None:
@@ -364,18 +434,18 @@ def complete_scan(
     notes: str | None = None,
 ) -> None:
     execute(
-        """UPDATE scans
-           SET status = 'complete', symbol_count = ?, scored_count = ?,
-               failed_count = ?, completed_at = datetime('now'), notes = ?
-           WHERE scan_uid = ?""",
-        (symbol_count, scored_count, failed_count, notes, scan_uid),
+        f"""UPDATE scans
+            SET status = ?, symbol_count = ?, scored_count = ?,
+                failed_count = ?, completed_at = datetime('now'), notes = ?
+            WHERE scan_uid = ?""",
+        (SCAN_STATUS_COMPLETE, symbol_count, scored_count, failed_count, notes, scan_uid),
     )
 
 
 def fail_scan(scan_uid: int, notes: str | None = None) -> None:
     execute(
-        "UPDATE scans SET status = 'failed', completed_at = datetime('now'), notes = ? WHERE scan_uid = ?",
-        (notes, scan_uid),
+        f"UPDATE scans SET status = ?, completed_at = datetime('now'), notes = ? WHERE scan_uid = ?",
+        (SCAN_STATUS_FAILED, notes, scan_uid),
     )
 
 
@@ -390,13 +460,8 @@ def get_recent_scans(limit: int = 10) -> list[dict]:
 # ── Scan Results ───────────────────────────────────────────────────────────────
 
 def insert_scan_result(data: dict) -> int:
-    cols = [c for c in data if c != "scan_result_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    return execute(
-        f"INSERT INTO scan_results ({col_names}) VALUES ({placeholders})",
-        tuple(data[c] for c in cols),
-    )
+    sql, params = _build_insert_sql("scan_results", data, pk="scan_result_uid")
+    return execute(sql, params)
 
 
 def get_scan_results(scan_uid: int, limit: int | None = None) -> list[dict]:
@@ -408,7 +473,7 @@ def get_scan_results(scan_uid: int, limit: int | None = None) -> list[dict]:
         ORDER BY sr.composite_rank ASC
     """
     if limit:
-        sql += f" LIMIT {limit}"
+        return query(sql + " LIMIT ?", (scan_uid, limit))
     return query(sql, (scan_uid,))
 
 
@@ -416,24 +481,19 @@ def get_scan_results(scan_uid: int, limit: int | None = None) -> list[dict]:
 
 def upsert_supply_chain_event(data: dict) -> int:
     """Insert or update an event keyed on (title, region). Returns supply_chain_event_uid."""
-    cols = [c for c in data if c != "supply_chain_event_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    updates = ", ".join(
-        f"{c} = excluded.{c}" for c in cols if c not in ("title", "region")
+    sql, params = _build_upsert_sql(
+        "supply_chain_events", data,
+        ("title", "region"),
+        pk="supply_chain_event_uid",
+        refresh_timestamp=True,
     )
-    # Ensure the UNIQUE index exists for ON CONFLICT to fire; fall back to INSERT OR IGNORE
-    # if the event already exists and only update mutable fields.
-    sql = (
-        f"INSERT INTO supply_chain_events ({col_names}) VALUES ({placeholders}) "
-        f"ON CONFLICT(title, region) DO UPDATE SET {updates}, updated_at = datetime('now')"
-    )
-    return execute(sql, tuple(data[c] for c in cols))
+    return execute(sql, params)
 
 
 def get_active_events() -> list[dict]:
     return query(
-        "SELECT * FROM supply_chain_events WHERE status = 'active' ORDER BY severity DESC, detected_at DESC"
+        "SELECT * FROM supply_chain_events WHERE status = ? ORDER BY severity DESC, detected_at DESC",
+        (EVENT_STATUS_ACTIVE,),
     )
 
 
@@ -446,8 +506,8 @@ def get_event(supply_chain_event_uid: int) -> dict | None:
 
 def resolve_event(supply_chain_event_uid: int) -> None:
     execute(
-        "UPDATE supply_chain_events SET status = 'resolved', resolved_at = datetime('now'), updated_at = datetime('now') WHERE supply_chain_event_uid = ?",
-        (supply_chain_event_uid,),
+        "UPDATE supply_chain_events SET status = ?, resolved_at = datetime('now'), updated_at = datetime('now') WHERE supply_chain_event_uid = ?",
+        (EVENT_STATUS_RESOLVED, supply_chain_event_uid),
     )
 
 
@@ -460,7 +520,7 @@ def link_event_stock(
     cannot_provide: str | None = None,
     will_redirect: str | None = None,
     impact_notes: str | None = None,
-    confidence: str = "medium",
+    confidence: str = CONFIDENCE_MEDIUM,
 ) -> None:
     execute(
         """INSERT INTO event_stocks
@@ -500,17 +560,13 @@ def get_stock_events(stock_uid: int) -> list[dict]:
 # ── Calendar Events ────────────────────────────────────────────────────────────
 
 def upsert_calendar_event(data: dict) -> int:
-    cols = [c for c in data if c != "calendar_event_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    updates = ", ".join(
-        f"{c} = excluded.{c}" for c in cols if c not in ("stock_uid", "event_type", "event_date")
+    sql, params = _build_upsert_sql(
+        "calendar_events", data,
+        ("stock_uid", "event_type", "event_date"),
+        pk="calendar_event_uid",
+        refresh_timestamp=True,
     )
-    sql = (
-        f"INSERT INTO calendar_events ({col_names}) VALUES ({placeholders}) "
-        f"ON CONFLICT(stock_uid, event_type, event_date) DO UPDATE SET {updates}, updated_at = datetime('now')"
-    )
-    return execute(sql, tuple(data[c] for c in cols))
+    return execute(sql, params)
 
 
 def get_calendar_events(
@@ -518,31 +574,23 @@ def get_calendar_events(
     end_date: str,
     event_type: str | None = None,
 ) -> list[dict]:
+    sql = "SELECT * FROM calendar_events WHERE event_date BETWEEN ? AND ?"
+    params: tuple = (start_date, end_date)
     if event_type:
-        return query(
-            "SELECT * FROM calendar_events WHERE event_date BETWEEN ? AND ? AND event_type = ? ORDER BY event_date",
-            (start_date, end_date, event_type),
-        )
-    return query(
-        "SELECT * FROM calendar_events WHERE event_date BETWEEN ? AND ? ORDER BY event_date",
-        (start_date, end_date),
-    )
+        sql += " AND event_type = ?"
+        params += (event_type,)
+    return query(sql + " ORDER BY event_date", params)
 
 
 # ── Source Signals ─────────────────────────────────────────────────────────────
 
 def upsert_source_signal(data: dict) -> int:
-    cols = [c for c in data if c != "source_signal_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    updates = ", ".join(
-        f"{c} = excluded.{c}" for c in cols if c not in ("stock_uid", "source", "fetched_at")
+    sql, params = _build_upsert_sql(
+        "source_signals", data,
+        ("stock_uid", "source", "fetched_at"),
+        pk="source_signal_uid",
     )
-    sql = (
-        f"INSERT INTO source_signals ({col_names}) VALUES ({placeholders}) "
-        f"ON CONFLICT(stock_uid, source, fetched_at) DO UPDATE SET {updates}"
-    )
-    return execute(sql, tuple(data[c] for c in cols))
+    return execute(sql, params)
 
 
 def get_stock_signals(stock_uid: int) -> list[dict]:
@@ -555,22 +603,148 @@ def get_stock_signals(stock_uid: int) -> list[dict]:
 # ── Research Reports ───────────────────────────────────────────────────────────
 
 def insert_research_report(data: dict) -> int:
-    cols = [c for c in data if c != "research_report_uid"]
-    placeholders = ", ".join("?" * len(cols))
-    col_names = ", ".join(cols)
-    return execute(
-        f"INSERT INTO research_reports ({col_names}) VALUES ({placeholders})",
-        tuple(data[c] for c in cols),
-    )
+    sql, params = _build_insert_sql("research_reports", data, pk="research_report_uid")
+    return execute(sql, params)
 
 
 def get_research_reports(tag: str | None = None, limit: int = 50) -> list[dict]:
+    sql = "SELECT * FROM research_reports"
+    params: tuple = ()
     if tag:
-        return query(
-            "SELECT * FROM research_reports WHERE tag = ? ORDER BY published_at DESC LIMIT ?",
-            (tag, limit),
-        )
+        sql += " WHERE tag = ?"
+        params = (tag,)
+    return query(sql + " ORDER BY published_at DESC LIMIT ?", params + (limit,))
+
+
+# ── Users ──────────────────────────────────────────────────────────────────────
+
+def create_user(
+    username: str,
+    password: str,
+    display_name: str = "",
+    email: str = "",
+    is_admin: bool = False,
+    force_password_change: bool = False,
+) -> int:
+    password_hash, salt = crypto.hash_password(password)
+    return execute(
+        """INSERT INTO users
+               (username, password_hash, salt, display_name, email, is_admin, force_password_change)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (username, password_hash, salt, display_name, email, int(is_admin), int(force_password_change)),
+    )
+
+
+def get_user(user_uid: int) -> dict | None:
+    return query_one("SELECT * FROM users WHERE user_uid = ?", (user_uid,))
+
+
+def get_user_by_username(username: str) -> dict | None:
+    return query_one("SELECT * FROM users WHERE username = ?", (username,))
+
+
+def verify_user_password(username: str, password: str) -> dict | None:
+    """Return the user dict if credentials are valid, else None."""
+    user = get_user_by_username(username)
+    if user and crypto.verify_password(password, user["password_hash"], user["salt"]):
+        return user
+    return None
+
+
+def update_password(user_uid: int, new_password: str) -> None:
+    password_hash, salt = crypto.hash_password(new_password)
+    execute(
+        """UPDATE users
+           SET password_hash = ?, salt = ?, force_password_change = 0, updated_at = datetime('now')
+           WHERE user_uid = ?""",
+        (password_hash, salt, user_uid),
+    )
+
+
+def seed_default_user() -> None:
+    """Create the default admin user if no users exist."""
+    if query_one("SELECT 1 FROM users LIMIT 1"):
+        return
+    create_user(
+        username="admin",
+        password="admin",
+        display_name="Administrator",
+        is_admin=True,
+        force_password_change=True,
+    )
+    _debug("seed_default_user: created admin")
+
+
+# ── API Keys ───────────────────────────────────────────────────────────────────
+
+def set_api_key(user_uid: int, name: str, plaintext_key: str) -> None:
+    """Encrypt and store (or update) an API key."""
+    encrypted = crypto.encrypt(plaintext_key)
+    execute(
+        """INSERT INTO api_keys (user_uid, name, api_key)
+           VALUES (?, ?, ?)
+           ON CONFLICT(user_uid, name) DO UPDATE SET
+               api_key = excluded.api_key,
+               updated_at = datetime('now')""",
+        (user_uid, name, encrypted),
+    )
+
+
+def get_api_key(user_uid: int, name: str) -> str | None:
+    """Return decrypted API key, or None if not set."""
+    row = query_one(
+        "SELECT api_key FROM api_keys WHERE user_uid = ? AND name = ?",
+        (user_uid, name),
+    )
+    if row is None:
+        return None
+    return crypto.decrypt(row["api_key"])
+
+
+def list_api_keys(user_uid: int) -> list[str]:
+    """Return provider names that have a key stored for this user."""
+    rows = query("SELECT name FROM api_keys WHERE user_uid = ? ORDER BY name", (user_uid,))
+    return [r["name"] for r in rows]
+
+
+def delete_api_key(user_uid: int, name: str) -> None:
+    execute("DELETE FROM api_keys WHERE user_uid = ? AND name = ?", (user_uid, name))
+
+
+# ── Portfolio ──────────────────────────────────────────────────────────────────
+
+def upsert_portfolio_position(
+    user_uid: int,
+    stock_uid: int,
+    quantity: float | None = None,
+    avg_cost: float | None = None,
+    plaid_account_id: str | None = None,
+) -> None:
+    execute(
+        """INSERT INTO portfolio (user_uid, stock_uid, quantity, avg_cost, plaid_account_id)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_uid, stock_uid) DO UPDATE SET
+               quantity         = excluded.quantity,
+               avg_cost         = excluded.avg_cost,
+               plaid_account_id = excluded.plaid_account_id,
+               updated_at       = datetime('now')""",
+        (user_uid, stock_uid, quantity, avg_cost, plaid_account_id),
+    )
+
+
+def get_portfolio(user_uid: int) -> list[dict]:
     return query(
-        "SELECT * FROM research_reports ORDER BY published_at DESC LIMIT ?",
-        (limit,),
+        """SELECT p.*, s.ticker, s.exchange, s.sector, s.price
+           FROM portfolio p
+           JOIN stocks s USING (stock_uid)
+           WHERE p.user_uid = ?
+           ORDER BY s.ticker""",
+        (user_uid,),
+    )
+
+
+def remove_portfolio_position(user_uid: int, stock_uid: int) -> None:
+    execute(
+        "DELETE FROM portfolio WHERE user_uid = ? AND stock_uid = ?",
+        (user_uid, stock_uid),
     )

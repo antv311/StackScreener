@@ -1,6 +1,7 @@
 CREATE TABLE watchlists (
     watchlist_uid INTEGER PRIMARY KEY AUTOINCREMENT,
 
+    user_uid    INTEGER REFERENCES users(user_uid),
     name        TEXT NOT NULL UNIQUE,
     description TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
