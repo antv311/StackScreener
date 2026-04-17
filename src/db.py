@@ -201,6 +201,9 @@ def init_db() -> None:
                 -- Macro
                 macro_signal TEXT,
 
+                -- Enrichment tracking
+                last_enriched_at TEXT,
+
                 UNIQUE(ticker, exchange)
             );
 

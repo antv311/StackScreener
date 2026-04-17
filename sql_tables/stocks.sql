@@ -97,5 +97,8 @@ CREATE TABLE stocks (
     -- ==========================================
     -- 4. MACRO SIGNAL
     -- ==========================================
-    macro_signal TEXT
+    macro_signal TEXT,
+
+    -- Enrichment tracking
+    last_enriched_at TEXT   -- NULL = never enriched; updated by enricher.py
 );
