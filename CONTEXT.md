@@ -1,0 +1,193 @@
+# StackScreener — Project Context
+> Read this file at the start of every Claude Code session to get fully up to speed.
+
+---
+
+## What Is StackScreener?
+
+StackScreener is a thematic, supply-chain-aware stock and ETF screener built from scratch on
+Python 3.14.2. It ingests geopolitical supply chain signals, fundamental scoring data,
+institutional flow data, and congressional trading intelligence to surface companies positioned
+to benefit from supply chain disruptions.
+
+**Owner:** Tony (antv311)
+**Repo:** https://github.com/antv311/StackScreener
+**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter
+
+---
+
+## Core Concept
+
+When a supply chain disruption happens (port blockage, sanctions, factory shutdown, geopolitical
+event), capital flows toward companies positioned to fill the gap. StackScreener detects those
+disruptions, maps affected industries and sectors, runs fundamental screening against that
+universe, and surfaces the best-positioned companies to benefit.
+
+**Signal flow:**
+```
+Disruption detected → Affected sectors identified → Fundamentals screened → Ranked output
+```
+
+---
+
+## UI Design (Decided — April 2026)
+
+The app has three top-level sections in a left sidebar: **Home**, **Research**, **Logistics**.
+See UI mockup screenshots in the repo root for reference.
+
+### Home
+- Full-width market heatmap (tiles color-coded by % change, sized by market cap)
+- Index selector at bottom: S&P 500 / DOW / Russell 1000 / Recommended / All
+
+### Research (5 sub-tabs across the top bar)
+
+1. **Screener** — filterable/sortable table. Filter dropdowns: Exchange, Sector, Market Cap,
+   P/E, Signal (All / Supply Chain Picks / Congress Buys / Dark Pool Alert).
+   Columns: Rank, Ticker, Company, Sector, Market Cap, P/E, Price, Change %, Volume,
+   Score (progress bar + number).
+
+2. **Calendar** — weekly calendar view with color-coded event chips
+   (green=Earnings, blue=Splits, yellow=IPOs). Filter tabs: All / Earnings / Splits / IPOs /
+   Economic. Detail table below the calendar grid.
+
+3. **Stock Comparison** — side-by-side comparison of up to 4 stocks. Sections: Valuation,
+   Price Performance, Income Statement. Highs highlighted green ▲, lows red ▼.
+
+4. **Stock Picks** — top picks scored across Unusual Whales, Quiver Quant, Yahoo Finance,
+   and Motley Fool. Each pick is a collapsible card:
+   [Logo] [Ticker] [Company Name] [Price] [Composite Score]
+   Expanded: per-source breakdown with reason text and sub-score.
+
+5. **Research Reports** — long-form research cards tagged by type
+   (Supply Chain / Fundamentals / Inst. Flow). Shows title, summary, and date.
+
+### Logistics
+- World map with animated pulsing pins for active supply chain disruptions.
+  Pin color = severity (red=CRITICAL, orange=HIGH, yellow=MEDIUM, blue=LOW).
+- Clicking a pin filters the table below to that event.
+- Table columns: Region/Event | Impacted Companies | Cannot Provide | Will Redirect To | Severity
+
+---
+
+## Architecture
+
+```
+Layer 1 — Data Sources
+  yfinance / yahooquery         → price, fundamentals, financials
+  Quiver Quant API              → congressional trades, lobbying, gov contracts  [PLANNED]
+  Unusual Whales API            → dark pool, options flow, institutional flow     [PLANNED]
+  worldmonitor-osint / other    → geopolitical / supply chain disruption signals  [PLANNED]
+
+Layer 2 — Database
+  SQLite via stackscreener.db   → stocks, watchlists, indices, scan_results,
+                                   stock_financials, supply_chain_events,
+                                   index_refresh_log
+
+Layer 3 — Scoring Engine
+  screener.py                   → EV/R, PE, EV/EBITDA, profit margin, PEG,
+                                   debt/equity, CFO ratio, Altman Z-score
+  Multi-dimensional scan        → weighted scoring across time periods
+
+Layer 4 — Output (Phase 1: Desktop App)
+  app.py (Textual TUI)          → interactive terminal app matching the UI design above
+  pdf_generator.py              → CSV + PDF reports to Results/ directory
+
+Layer 5 — Output (Phase 2: Web App)
+  Flask or FastAPI backend      → [FUTURE]
+  REST API                      → [FUTURE]
+```
+
+---
+
+## Project File Structure (target)
+
+```
+StackScreener/
+├── src/
+│   ├── screener.py                 ← core scoring engine (built from scratch)
+│   ├── screener_run.py             ← scan runner / CLI entry point
+│   ├── screener_config.py          ← ALL constants, weights, thresholds, DEBUG_MODE
+│   ├── screener_post_processing.py ← normalized scoring output
+│   ├── db.py                       ← SQLite layer — ALL DB access goes here only
+│   ├── supply_chain.py             ← supply chain signal ingestion + sector mapping [PLANNED]
+│   ├── app.py                      ← desktop TUI entry point (Textual)             [PLANNED]
+│   ├── pdf_generator.py            ← PDF reports (fpdf2)
+│   ├── mailer.py                   ← email delivery
+│   └── Results/                    ← scan output (gitignored)
+├── CONTEXT.md                      ← this file
+├── CLAUDE.md                       ← coding conventions for Claude Code
+├── ROADMAP.md                      ← phased development plan
+├── requirements.txt
+├── requirements-compiled.txt       ← C extension build notes for Python 3.14
+└── README.md
+```
+
+---
+
+## Database Schema (db.py)
+
+All primary keys follow the `tablename_uid` convention.
+
+| Table | Purpose |
+|---|---|
+| `watchlists` | Named watchlists |
+| `stocks` | All tracked symbols; `watchlist_uid` + `is_watched` embedded for simple queries |
+| `indices` | Market index definitions |
+| `stock_financials` | Per-symbol financial data with staleness tracking |
+| `scans` | Scan run metadata |
+| `scan_results` | Individual symbol results per scan |
+| `supply_chain_events` | Active disruption events: region, severity, affected/beneficiary sectors |
+| `index_refresh_log` | Tracks when indices were last refreshed |
+
+Watchlist query pattern:
+```sql
+SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1
+```
+
+---
+
+## Python 3.14 Compatibility Notes
+
+| Package | Issue | Resolution |
+|---|---|---|
+| `numba` | Hard-capped at Python <3.14 | Cannot use — install `pandas-ta` with `--no-deps` |
+| `forex-python` | Unmaintained, broken | Replaced with `CurrencyConverter` |
+| `fpdf` / `HTMLMixin` | HTMLMixin removed in fpdf2 | Use fpdf2 API only |
+| `pyPdf` | Dead since 2010 | Replaced with `pypdf` |
+| `talib` | C extension, fights 3.14 | Replaced with `pandas-ta` |
+| `pandas` `.fillna(method=)` | Deprecated in pandas 2.x | Use `.ffill()` / `.bfill()` |
+
+`pandas-ta` must be installed with `--no-deps` — no exceptions.
+
+---
+
+## Build Environment (Windows)
+
+- Python 3.14.2 in a venv called `venv_ss`
+- C extensions compiled from source via **x64 Native Tools Command Prompt for VS 2022**
+- Build prerequisites: `meson-python`, `meson`, `ninja`, `cython`, `pybind11`,
+  `versioneer`, `setuptools_scm`, `pkgconfiglite` (via Chocolatey)
+- Deployment target: Ubuntu
+
+---
+
+## Coding Style & Patterns
+
+- Functional programming preferred — avoid sprawling class hierarchies
+- All constants in `screener_config.py` — never hardcoded in logic files
+- `DEBUG_MODE = False` in `screener_config.py` gates all debug output
+- `frozenset` for constant set membership checks (e.g. `INT_FIELDS`)
+- `match-case` over long `if-elif` chains
+- `pd.concat()` over repeated `DataFrame.insert()` — avoids PerformanceWarning
+- `dataclasses.fields()` for iterating model fields
+- SQLite PK convention: `tablename_uid`
+- All `shutil.move()` calls guarded with `os.path.exists()`
+- yahooquery: Timestamp dict keys → strings; filter `periodType == '12M'` for annual data
+
+---
+
+## Key External Resources
+
+- Quiver Quant API: https://www.quiverquant.com/
+- Unusual Whales API: https://unusualwhales.com/
+- Supply chain signals: https://github.com/worldmonitor/worldmonitor-osint (planned)
