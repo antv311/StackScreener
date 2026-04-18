@@ -114,7 +114,7 @@ def _enrich_one(stock: dict) -> bool:
         db.upsert_stock(_map_info(ticker, stock["exchange"], info))
         return True
     except Exception as e:
-        print(f"  ✗ {ticker}: {e}")
+        print(f"  XX {ticker}: {e}")
         return False
 
 
@@ -234,10 +234,21 @@ def _is_nan(val) -> bool:
         return False
 
 
-def run(rate_limit: float = 0.5, num_workers: int = 1, limit: int | None = None, ipo_only: bool = False) -> None:
+def run(
+    rate_limit: float = 0.5,
+    num_workers: int = 1,
+    limit: int | None = None,
+    ipo_only: bool = False,
+    history_only: bool = False,
+    history_period: str = "5y",
+) -> None:
     check_upcoming_ipos()
 
     if ipo_only:
+        return
+
+    if history_only:
+        _run_history(rate_limit, num_workers, limit, history_period)
         return
 
     pending = _get_pending(limit)
@@ -255,14 +266,9 @@ def run(rate_limit: float = 0.5, num_workers: int = 1, limit: int | None = None,
     lock = threading.Lock()
 
     threads = [
-        threading.Thread(
-            target=_worker,
-            args=(work_queue, rate_limit, stats, lock),
-            daemon=True,
-        )
+        threading.Thread(target=_worker, args=(work_queue, rate_limit, stats, lock), daemon=True)
         for _ in range(num_workers)
     ]
-
     for t in threads:
         t.start()
     for t in threads:
@@ -271,15 +277,147 @@ def run(rate_limit: float = 0.5, num_workers: int = 1, limit: int | None = None,
     print(f"\nDone - {stats['ok']} enriched, {stats['failed']} failed.")
 
 
+# ── Price history ──────────────────────────────────────────────────────────────
+
+_HISTORY_STALENESS_DAYS = 3  # accounts for weekends + holidays
+
+
+def _get_pending_history(limit: int | None) -> list[dict]:
+    """Return listed stocks whose price history is missing or stale."""
+    sql = """
+        SELECT s.stock_uid, s.ticker, s.exchange
+        FROM stocks s
+        WHERE s.price > 0
+          AND (
+              NOT EXISTS (
+                  SELECT 1 FROM price_history ph WHERE ph.stock_uid = s.stock_uid
+              )
+              OR (
+                  SELECT MAX(ph.date) FROM price_history ph WHERE ph.stock_uid = s.stock_uid
+              ) < date('now', ?)
+          )
+        ORDER BY s.ticker ASC
+    """
+    params: tuple = (f"-{_HISTORY_STALENESS_DAYS} days",)
+    if limit:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return db.query(sql, params)
+
+
+def _map_history_row(stock_uid: int, ts, row) -> dict:
+    splits = float(row.get("Stock Splits", 0) or 0)
+    return {
+        "stock_uid":    stock_uid,
+        "date":         ts.strftime("%Y-%m-%d"),
+        "open":         round(float(row["Open"]),   4) if not _is_nan(row.get("Open"))   else None,
+        "high":         round(float(row["High"]),   4) if not _is_nan(row.get("High"))   else None,
+        "low":          round(float(row["Low"]),    4) if not _is_nan(row.get("Low"))    else None,
+        "close":        round(float(row["Close"]),  4),
+        "volume":       int(row["Volume"])               if not _is_nan(row.get("Volume")) else None,
+        "dividend":     round(float(row.get("Dividends", 0) or 0), 6),
+        "split_factor": round(splits, 4) if splits != 0 else 1.0,
+    }
+
+
+def _fetch_history_one(stock: dict, period: str) -> bool:
+    ticker = stock["ticker"]
+    try:
+        df = yf.Ticker(ticker).history(period=period)
+        if df is None or df.empty:
+            if DEBUG_MODE:
+                print(f"[history] {ticker}: empty response, skipping")
+            return False
+        records = [_map_history_row(stock["stock_uid"], ts, row) for ts, row in df.iterrows()]
+        db.upsert_price_history_batch(records)
+        return True
+    except Exception as e:
+        print(f"  XX {ticker}: {e}")
+        return False
+
+
+def _history_worker(
+    work_queue: queue.Queue,
+    period: str,
+    rate_limit: float,
+    stats: dict,
+    lock: threading.Lock,
+) -> None:
+    while True:
+        try:
+            stock = work_queue.get(timeout=2)
+        except queue.Empty:
+            break
+
+        success = _fetch_history_one(stock, period)
+        time.sleep(rate_limit)
+
+        with lock:
+            if success:
+                stats["ok"] += 1
+            else:
+                stats["failed"] += 1
+            done = stats["ok"] + stats["failed"]
+            status = "OK" if success else "XX"
+            print(f"  {status} [{done}/{stats['total']}] {stock['ticker']}")
+
+        work_queue.task_done()
+
+
+def _run_history(
+    rate_limit: float,
+    num_workers: int,
+    limit: int | None,
+    period: str,
+) -> None:
+    pending = _get_pending_history(limit)
+    if not pending:
+        print("Price history is up to date.")
+        return
+
+    print(f"Fetching history ({period}) for {len(pending)} stocks  |  rate: {rate_limit}s/request  |  workers: {num_workers}")
+
+    work_queue: queue.Queue = queue.Queue()
+    for stock in pending:
+        work_queue.put(stock)
+
+    stats = {"ok": 0, "failed": 0, "total": len(pending)}
+    lock = threading.Lock()
+
+    threads = [
+        threading.Thread(
+            target=_history_worker,
+            args=(work_queue, period, rate_limit, stats, lock),
+            daemon=True,
+        )
+        for _ in range(num_workers)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    print(f"\nDone - {stats['ok']} fetched, {stats['failed']} failed.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="StackScreener enrichment worker")
-    parser.add_argument("--rate",     type=float, default=0.5,  metavar="S", help="Seconds between requests (default 0.5)")
-    parser.add_argument("--workers",  type=int,   default=1,    metavar="N", help="Parallel worker threads (default 1)")
-    parser.add_argument("--limit",    type=int,   default=None, metavar="N", help="Max stocks to process then exit")
-    parser.add_argument("--ipo-only", action="store_true",                   help="Run IPO calendar check only, then exit")
+    parser.add_argument("--rate",           type=float, default=0.5,  metavar="S",      help="Seconds between requests (default 0.5)")
+    parser.add_argument("--workers",        type=int,   default=1,    metavar="N",      help="Parallel worker threads (default 1)")
+    parser.add_argument("--limit",          type=int,   default=None, metavar="N",      help="Max stocks to process then exit")
+    parser.add_argument("--ipo-only",       action="store_true",                        help="Run IPO calendar check only, then exit")
+    parser.add_argument("--history-only",   action="store_true",                        help="Fetch price history only, then exit")
+    parser.add_argument("--history-period", type=str,   default="5y", metavar="PERIOD", help="yfinance history period (default: 5y). Options: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max")
     args = parser.parse_args()
 
-    run(rate_limit=args.rate, num_workers=args.workers, limit=args.limit, ipo_only=args.ipo_only)
+    run(
+        rate_limit=args.rate,
+        num_workers=args.workers,
+        limit=args.limit,
+        ipo_only=args.ipo_only,
+        history_only=args.history_only,
+        history_period=args.history_period,
+    )
 
 
 if __name__ == "__main__":
