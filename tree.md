@@ -43,6 +43,7 @@ StackScreener/
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
 ├── ROADMAP.md                            ← phased development plan with progress tracking
+├── DATABASE.md                           ← full database schema map (all 12 tables, FKs, query patterns)
 ├── README.md                             ← GitHub landing page
 ├── tree.md                               ← this file
 ├── requirements.txt                      ← Python dependencies

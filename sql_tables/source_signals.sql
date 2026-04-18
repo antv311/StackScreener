@@ -5,12 +5,12 @@ CREATE TABLE source_signals (
     stock_uid INTEGER NOT NULL REFERENCES stocks(stock_uid),
 
     -- Signal Source
-    source TEXT NOT NULL,  -- 'quiver_quant', 'unusual_whales', 'yahoo_finance', 'motley_fool'
+    source TEXT NOT NULL,  -- 'senate_watcher', 'house_watcher', 'sec_form4', 'sec_13f', 'yahoo_finance', 'options_flow'
 
     -- Signal Data
     sub_score   REAL,   -- 0-100 score from this source
     reason_text TEXT,   -- human-readable explanation shown in Stock Picks card
-    signal_type TEXT,   -- 'congress_buy', 'dark_pool', 'options_flow', 'analyst_rec', 'article'
+    signal_type TEXT,   -- 'congress_buy', 'insider_buy', 'inst_accumulation', 'options_flow', 'analyst_rec'
     signal_url  TEXT,   -- link to original source if available
 
     -- Raw payload for debugging / reprocessing

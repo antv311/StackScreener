@@ -212,6 +212,7 @@ def init_db() -> None:
                 user_uid  INTEGER NOT NULL REFERENCES users(user_uid),
                 name      TEXT NOT NULL,
                 api_key   TEXT NOT NULL,
+                url       TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(user_uid, name)
@@ -276,6 +277,10 @@ def init_db() -> None:
                 affected_sectors    TEXT,
                 affected_industries TEXT,
                 beneficiary_sectors TEXT,
+                country_code        TEXT,
+                trade_route         TEXT,
+                commodity           TEXT,
+                source_url          TEXT,
                 event_date          TEXT,
                 detected_at         TEXT NOT NULL DEFAULT (datetime('now')),
                 resolved_at         TEXT,
@@ -345,7 +350,27 @@ def init_db() -> None:
                 updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
             );
         """)
+    _migrate_db(conn)
     _debug("init_db complete")
+
+
+def _migrate_db(conn: sqlite3.Connection) -> None:
+    """Add new columns to existing tables without dropping data.
+
+    Each entry is tried once; OperationalError means the column already exists.
+    """
+    migrations = [
+        "ALTER TABLE api_keys ADD COLUMN url TEXT",
+        "ALTER TABLE supply_chain_events ADD COLUMN country_code TEXT",
+        "ALTER TABLE supply_chain_events ADD COLUMN trade_route TEXT",
+        "ALTER TABLE supply_chain_events ADD COLUMN commodity TEXT",
+        "ALTER TABLE supply_chain_events ADD COLUMN source_url TEXT",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
 
 
 # ── Watchlists ─────────────────────────────────────────────────────────────────
@@ -680,16 +705,17 @@ def seed_default_user() -> None:
 
 # ── API Keys ───────────────────────────────────────────────────────────────────
 
-def set_api_key(user_uid: int, name: str, plaintext_key: str) -> None:
+def set_api_key(user_uid: int, name: str, plaintext_key: str, url: str | None = None) -> None:
     """Encrypt and store (or update) an API key."""
     encrypted = crypto.encrypt(plaintext_key)
     execute(
-        """INSERT INTO api_keys (user_uid, name, api_key)
-           VALUES (?, ?, ?)
+        """INSERT INTO api_keys (user_uid, name, api_key, url)
+           VALUES (?, ?, ?, ?)
            ON CONFLICT(user_uid, name) DO UPDATE SET
                api_key = excluded.api_key,
+               url     = excluded.url,
                updated_at = datetime('now')""",
-        (user_uid, name, encrypted),
+        (user_uid, name, encrypted, url),
     )
 
 

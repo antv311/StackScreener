@@ -41,6 +41,27 @@ EVENT_STATUS_ACTIVE:     str = "active"
 EVENT_STATUS_RESOLVED:   str = "resolved"
 EVENT_STATUS_MONITORING: str = "monitoring"
 
+# ── Supply Chain Event Types ───────────────────────────────────────────────────
+EVENT_TYPE_CONFLICT:         str = "conflict"
+EVENT_TYPE_SANCTIONS:        str = "sanctions"
+EVENT_TYPE_WEATHER:          str = "weather"
+EVENT_TYPE_LABOR:            str = "labor"
+EVENT_TYPE_ACCIDENT:         str = "accident"
+EVENT_TYPE_PORT_BLOCKAGE:    str = "port_blockage"
+EVENT_TYPE_FACTORY_SHUTDOWN: str = "factory_shutdown"
+EVENT_TYPE_PANDEMIC:         str = "pandemic"
+
+EVENT_TYPES: frozenset[str] = frozenset({
+    EVENT_TYPE_CONFLICT,
+    EVENT_TYPE_SANCTIONS,
+    EVENT_TYPE_WEATHER,
+    EVENT_TYPE_LABOR,
+    EVENT_TYPE_ACCIDENT,
+    EVENT_TYPE_PORT_BLOCKAGE,
+    EVENT_TYPE_FACTORY_SHUTDOWN,
+    EVENT_TYPE_PANDEMIC,
+})
+
 # ── Confidence Levels ──────────────────────────────────────────────────────────
 CONFIDENCE_HIGH:   str = "high"
 CONFIDENCE_MEDIUM: str = "medium"

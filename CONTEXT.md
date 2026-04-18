@@ -148,6 +148,7 @@ StackScreener/
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← phased development plan
+├── DATABASE.md                     ← full schema map (all 12 tables, FKs, query patterns)
 ├── requirements.txt
 └── README.md
 ```
