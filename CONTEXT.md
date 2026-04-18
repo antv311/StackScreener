@@ -7,8 +7,8 @@
 
 StackScreener is a thematic, supply-chain-aware stock and ETF screener built from scratch on
 Python 3.14.2. It ingests geopolitical supply chain signals, fundamental scoring data,
-institutional flow data, and congressional trading intelligence to surface companies positioned
-to benefit from supply chain disruptions.
+congressional trading disclosures, and SEC insider/institutional filings to surface companies
+positioned to benefit from supply chain disruptions.
 
 **Owner:** Tony (antv311)
 **Repo:** https://github.com/antv311/StackScreener
@@ -54,8 +54,8 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 3. **Stock Comparison** — side-by-side comparison of up to 4 stocks. Sections: Valuation,
    Price Performance, Income Statement. Highs highlighted green ▲, lows red ▼.
 
-4. **Stock Picks** — top picks scored across Unusual Whales, Quiver Quant, Yahoo Finance,
-   and Motley Fool. Each pick is a collapsible card:
+4. **Stock Picks** — top picks scored across congressional trades, SEC insider filings,
+   Yahoo Finance, and options flow. Each pick is a collapsible card:
    [Logo] [Ticker] [Company Name] [Price] [Composite Score]
    Expanded: per-source breakdown with reason text and sub-score.
 
@@ -78,8 +78,11 @@ Layer 1 — Data Sources
   yahooquery                     → detailed financials (supplement)
   Yahoo Finance Screener API     → full NYSE/NASDAQ universe enumeration
   Yahoo Finance Calendar API     → upcoming IPOs (daily check)
-  Quiver Quant API               → congressional trades, lobbying, gov contracts  [PLANNED]
-  Unusual Whales API             → dark pool, options flow, institutional flow     [PLANNED]
+  Senate Stock Watcher API       → congressional trades (Senate) — free, no key   [PLANNED]
+  House Stock Watcher API        → congressional trades (House) — free, no key     [PLANNED]
+  SEC EDGAR (Form 4)             → insider trades — free, public                   [PLANNED]
+  SEC EDGAR (Form 13F)           → institutional holdings — free, public           [PLANNED]
+  yfinance options chain         → basic options flow — free                       [PLANNED]
   worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
@@ -168,7 +171,7 @@ and are created by `db.init_db()`. All access goes through `db.py` only.
 | `supply_chain_events` | Active disruption events with lat/lon, severity, affected/beneficiary sectors |
 | `event_stocks` | Junction: which stocks are impacted or benefit from each event |
 | `calendar_events` | Earnings, splits, IPOs, economic events — upcoming IPOs pre-seeded here |
-| `source_signals` | Per-stock signals from Quiver Quant, Unusual Whales, Yahoo, Motley Fool |
+| `source_signals` | Per-stock signals from congressional trades, SEC filings, Yahoo, options flow |
 | `research_reports` | Long-form research content tagged by type |
 
 Watchlist query pattern:
@@ -217,7 +220,7 @@ Default admin account: `admin / admin` — forced to change on first login.
 
 ## Build Environment (Windows)
 
-- Python 3.14.2 in a venv called `venv_ss`
+- Python 3.14.2 in a venv called `venv` (located at `StackScreener/venv/`)
 - C extensions compiled from source via **x64 Native Tools Command Prompt for VS 2022**
 - Build prerequisites: `meson-python`, `meson`, `ninja`, `cython`, `pybind11`,
   `versioneer`, `setuptools_scm`, `pkgconfiglite` (via Chocolatey)
@@ -242,6 +245,8 @@ Default admin account: `admin / admin` — forced to change on first login.
 
 ## Key External Resources
 
-- Quiver Quant API: https://www.quiverquant.com/
-- Unusual Whales API: https://unusualwhales.com/
+- Senate Stock Watcher API: https://senatestockwatcher.com/api (free, no key)
+- House Stock Watcher API: https://housestockwatcher.com/api (free, no key)
+- SEC EDGAR full-text search: https://efts.sec.gov/LATEST/search-index (free)
+- SEC EDGAR filings API: https://data.sec.gov/submissions/ (free)
 - Supply chain signals: https://github.com/worldmonitor/worldmonitor-osint (planned)

@@ -122,16 +122,20 @@ automatically surfaces a ranked list of companies positioned to benefit.
 
 ## Phase 3 — Institutional Flow Integration
 
-Layer in smart money signals to validate or strengthen supply chain picks.
+Layer in free public smart-money signals to validate or strengthen supply chain picks.
+Quiver Quant and Unusual Whales were dropped — too expensive. Replaced with free public sources.
 
-- [ ] Integrate **Quiver Quant API** (congressional trades, lobbying, gov contracts)
-- [ ] Integrate **Unusual Whales API** (dark pool prints, options flow, institutional activity)
-- [ ] Store signals in `source_signals` table via `db.py`
+- [ ] Integrate **Senate Stock Watcher API** (congressional trades — Senate, free)
+- [ ] Integrate **House Stock Watcher API** (congressional trades — House, free)
+- [ ] Integrate **SEC EDGAR Form 4** (insider buy/sell filings, free public API)
+- [ ] Integrate **SEC EDGAR Form 13F** (institutional holdings, free public API)
+- [ ] Integrate **yfinance options chain** (basic options flow, free)
+- [ ] Store all signals in `source_signals` table via `db.py`
 - [ ] Incorporate flow signals into final ranking (configurable weight in `screener_config.py`)
 - [ ] Confluence view: supply chain signal + institutional flow + fundamentals all aligned
 
-**Exit criteria:** A scan result shows which supply chain picks also have institutional money
-flowing in, with a combined score.
+**Exit criteria:** A scan result shows which supply chain picks also have congressional or
+insider buying, with a combined score. No paid API keys required.
 
 ---
 
@@ -178,7 +182,6 @@ Migrate the desktop app to a web interface. By this point the core logic is full
 ## Current Blockers / Open Questions
 
 - Supply chain data source TBD: worldmonitor-osint vs paid API vs news scraping
-- Quiver Quant and Unusual Whales require API keys — budget/access TBD
 - Ubuntu deployment environment TBD (VPS, home server, cloud?)
 
 ---
@@ -193,7 +196,7 @@ Migrate the desktop app to a web interface. By this point the core logic is full
 | `fpdf2` | PDF report generation | Replaced old fpdf |
 | `CurrencyConverter` | FX conversion | Replaced forex-python |
 | `textual` | Terminal UI | Phases 1–4 |
-| `requests` | HTTP fetches | IPO calendar, web data |
+| `requests` | HTTP fetches | SEC EDGAR, web data |
 | `cryptography` | Fernet encryption | API key storage |
 | `keyring` | OS keyring access | Fernet master key storage |
 | `sqlite3` | DB (stdlib) | No ORM needed |

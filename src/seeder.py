@@ -44,15 +44,8 @@ def _screener_row_to_stock(row: dict, exchange_label: str) -> dict | None:
 
 
 def _fetch_page(exchange_code: str, offset: int) -> dict:
-    s = yf.Screener()
-    s.set_body({
-        "query": {"operator": "eq", "operands": ["exchange", exchange_code]},
-        "size": _PAGE_SIZE,
-        "offset": offset,
-        "sortField": "ticker",
-        "sortType": "ASC",
-    })
-    return s.response
+    q = yf.EquityQuery("eq", ["exchange", exchange_code])
+    return yf.screen(q, sortField="ticker", sortAsc=True, size=_PAGE_SIZE, offset=offset)
 
 
 def fetch_universe(limit: int | None = None) -> int:

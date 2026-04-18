@@ -21,7 +21,6 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-import requests
 import yfinance as yf
 
 import db
@@ -140,7 +139,7 @@ def _worker(
             else:
                 stats["failed"] += 1
             done = stats["ok"] + stats["failed"]
-            status = "✓" if success else "✗"
+            status = "OK" if success else "XX"
             print(f"  {status} [{done}/{stats['total']}] {stock['ticker']}")
 
         work_queue.task_done()
@@ -148,7 +147,6 @@ def _worker(
 
 # ── IPO calendar ──────────────────────────────────────────────────────────────
 
-_IPO_CALENDAR_URL = "https://query1.finance.yahoo.com/v1/finance/calendar/ipo"
 _IPO_LOOKAHEAD_DAYS = 90
 
 
@@ -162,26 +160,17 @@ def _ipo_checked_today() -> bool:
     return row["fetched_at"][:10] == datetime.now().strftime("%Y-%m-%d")
 
 
-def _fetch_ipo_calendar() -> list[dict]:
+def _fetch_ipo_calendar():
     today = datetime.now()
-    params = {
-        "from":  today.strftime("%Y-%m-%d"),
-        "to":    (today + timedelta(days=_IPO_LOOKAHEAD_DAYS)).strftime("%Y-%m-%d"),
-        "count": 200,
-        "start": 0,
-    }
-    resp = requests.get(
-        _IPO_CALENDAR_URL,
-        params=params,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=15,
+    end   = today + timedelta(days=_IPO_LOOKAHEAD_DAYS)
+    return yf.Calendars().get_ipo_info_calendar(
+        today.strftime("%Y-%m-%d"),
+        end.strftime("%Y-%m-%d"),
     )
-    resp.raise_for_status()
-    return resp.json().get("ipoCalendar", {}).get("result", [])
 
 
 def check_upcoming_ipos() -> None:
-    """Fetch upcoming IPOs from Yahoo Finance and store in calendar_events.
+    """Fetch upcoming IPOs via yfinance and store in calendar_events.
 
     Runs at most once per day. Pre-seeds stocks table for any IPO that already
     has a ticker symbol so it can be watched before it lists.
@@ -193,34 +182,38 @@ def check_upcoming_ipos() -> None:
 
     print("Checking IPO calendar...")
     try:
-        events = _fetch_ipo_calendar()
+        df = _fetch_ipo_calendar()
     except Exception as e:
         print(f"  IPO calendar fetch failed: {e}")
         return
 
+    if df is None or df.empty:
+        print("  No upcoming IPOs found.")
+        return
+
     seeded = 0
     stored = 0
-    for ev in events:
-        ticker     = (ev.get("symbol") or "").strip().upper().replace(".", "-") or None
-        name       = ev.get("companyshortname") or ev.get("companyname") or ticker or "Unknown"
-        ipo_date   = ev.get("ipoexpecteddate") or ev.get("startdatetime", "")[:10] or None
-        price_low  = ev.get("priceLow")  or ev.get("offeringprice")
-        price_high = ev.get("priceHigh") or ev.get("offeringprice")
-        exchange   = ev.get("exchange", "")
+    for ticker, row in df.iterrows():
+        ticker = str(ticker).strip().upper().replace(".", "-") if ticker else None
+        name       = row.get("Company") or ticker or "Unknown"
+        exchange   = row.get("Exchange") or ""
+        date_val   = row.get("Date")
+        ipo_date   = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else None
+        price_low  = row.get("Price From") if not _is_nan(row.get("Price From")) else None
+        price_high = row.get("Price To")   if not _is_nan(row.get("Price To"))   else None
 
-        # Pre-seed into stocks if ticker is known — price 0.0 signals not yet listed
         if ticker:
             db.upsert_stock({
-                "ticker":    ticker,
-                "exchange":  _norm_exchange(exchange) or exchange or "UNKNOWN",
-                "price":     0.0,
-                "ipo_date":  ipo_date,
+                "ticker":   ticker,
+                "exchange": _norm_exchange(exchange) or exchange or "UNKNOWN",
+                "price":    0.0,
+                "ipo_date": ipo_date,
             })
             seeded += 1
 
-        # Store in calendar_events regardless of whether ticker is known yet
+        existing = db.get_stock_by_ticker(ticker) if ticker else None
         db.upsert_calendar_event({
-            "stock_uid":      db.get_stock_by_ticker(ticker)["stock_uid"] if ticker and db.get_stock_by_ticker(ticker) else None,
+            "stock_uid":      existing["stock_uid"] if existing else None,
             "event_type":     "ipo",
             "event_date":     ipo_date or datetime.now().strftime("%Y-%m-%d"),
             "title":          f"{name} IPO",
@@ -231,6 +224,14 @@ def check_upcoming_ipos() -> None:
         stored += 1
 
     print(f"  {stored} upcoming IPOs stored, {seeded} pre-seeded in stocks.")
+
+
+def _is_nan(val) -> bool:
+    try:
+        import math
+        return val is None or math.isnan(float(val))
+    except (TypeError, ValueError):
+        return False
 
 
 def run(rate_limit: float = 0.5, num_workers: int = 1, limit: int | None = None, ipo_only: bool = False) -> None:
@@ -267,7 +268,7 @@ def run(rate_limit: float = 0.5, num_workers: int = 1, limit: int | None = None,
     for t in threads:
         t.join()
 
-    print(f"\nDone — {stats['ok']} enriched, {stats['failed']} failed.")
+    print(f"\nDone - {stats['ok']} enriched, {stats['failed']} failed.")
 
 
 def main() -> None:

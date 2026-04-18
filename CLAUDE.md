@@ -11,7 +11,7 @@ phase is active before writing any code.
 - **Repo:** https://github.com/antv311/StackScreener
 - **Built from scratch**
 - **Runtime:** Python 3.14.2 only
-- **venv name:** `venv_ss`
+- **venv:** `venv/` (at repo root — activate with `venv\Scripts\activate`)
 - **DB file:** `stackscreener.db`
 
 ---
@@ -102,7 +102,7 @@ db.get_watchlist_stocks(watchlist_uid)
 - All weights, thresholds, scoring constants live in `screener_config.py`
 - Score components: EV/R, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z
 - Supply chain signal score is additive on top of fundamental score (configurable weight)
-- Composite score across Quiver Quant + Unusual Whales + Yahoo Finance + Motley Fool sources
+- Institutional flow sources: Senate/House Stock Watcher (congressional trades), SEC EDGAR Form 4 (insider trades), SEC EDGAR Form 13F (institutional holdings), yfinance options chain — all free, no paid API keys required
 
 ---
 
@@ -148,7 +148,7 @@ Do not invent new screens or reorganize navigation without confirming first.
 
 Must include:
 ```
-venv_ss/
+venv/
 builds/
 __pycache__/
 *.pyc
