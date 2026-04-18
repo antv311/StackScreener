@@ -20,7 +20,8 @@ stocks
  ├── calendar_events     (stock_uid → stocks)
  ├── source_signals      (stock_uid → stocks)
  ├── research_reports    (stock_uid → stocks)
- └── portfolio           (stock_uid → stocks)
+ ├── portfolio           (stock_uid → stocks)
+ └── price_history       (stock_uid → stocks)
 
 scans
  └── scan_results        (scan_uid → scans)
@@ -31,7 +32,7 @@ supply_chain_events
 ```
 
 **Creation order** (respects FK deps):
-`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports`
+`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports → price_history`
 
 ---
 
@@ -302,6 +303,28 @@ Long-form research cards shown in the Research → Research Reports tab.
 
 ---
 
+### price_history
+Daily OHLCV bars + corporate actions (dividends, splits) per stock. Enables charting, backtesting, and dividend growth tracking.
+
+| Column | Type | Notes |
+|---|---|---|
+| `price_history_uid` | INTEGER PK | |
+| `stock_uid` | INTEGER FK → stocks | |
+| `date` | TEXT | YYYY-MM-DD — UNIQUE with stock_uid |
+| `open`, `high`, `low` | REAL | |
+| `close` | REAL | adjusted close |
+| `volume` | INTEGER | |
+| `dividend` | REAL | per-share dividend paid on this date; 0.0 otherwise |
+| `split_factor` | REAL | e.g. `4.0` for a 4:1 split; `1.0` = no split |
+
+```python
+# Fetch via yfinance:
+df = yf.Ticker('AAPL').history(period='5y')
+# df columns: Open, High, Low, Close, Volume, Dividends, Stock Splits
+```
+
+---
+
 ## Key Query Patterns
 
 ```sql
@@ -338,4 +361,16 @@ FROM calendar_events
 WHERE event_type = 'ipo'
   AND event_date BETWEEN date('now') AND date('now', '+30 days')
 ORDER BY event_date;
+
+-- Dividend history for a stock (growth tracking)
+SELECT date, dividend
+FROM price_history
+WHERE stock_uid = ? AND dividend > 0
+ORDER BY date ASC;
+
+-- Last 1 year of daily closes
+SELECT date, close, volume
+FROM price_history
+WHERE stock_uid = ? AND date >= date('now', '-1 year')
+ORDER BY date ASC;
 ```

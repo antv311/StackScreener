@@ -29,7 +29,8 @@ StackScreener/
 │   ├── event_stocks.sql                  ← junction: stocks impacted by or benefiting from each event
 │   ├── calendar_events.sql               ← earnings, splits, IPOs, economic events
 │   ├── source_signals.sql                ← signals from congressional trades, SEC filings, Yahoo, options flow
-│   └── research_reports.sql             ← long-form research content tagged by type
+│   ├── research_reports.sql             ← long-form research content tagged by type
+│   └── price_history.sql               ← daily OHLCV bars + dividends + split factors
 ├── Mock_up/
 │   ├── HomePage_.jpg
 │   ├── Logisitc_.jpg
@@ -69,6 +70,7 @@ Tables must be created in this order (FK dependencies):
 10. calendar_events             → stocks
 11. source_signals              → stocks
 12. research_reports            → supply_chain_events, stocks
+13. price_history               → stocks
 ```
 
 ---

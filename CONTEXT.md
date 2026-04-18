@@ -86,7 +86,7 @@ Layer 1 — Data Sources
   worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
-  SQLite via stackscreener.db    → 12 tables (see schema below)
+  SQLite via stackscreener.db    → 13 tables (see schema below)
   API keys encrypted via Fernet, master key stored in OS keyring
 
 Layer 3 — Data Pipeline
@@ -174,6 +174,7 @@ and are created by `db.init_db()`. All access goes through `db.py` only.
 | `calendar_events` | Earnings, splits, IPOs, economic events — upcoming IPOs pre-seeded here |
 | `source_signals` | Per-stock signals from congressional trades, SEC filings, Yahoo, options flow |
 | `research_reports` | Long-form research content tagged by type |
+| `price_history` | Daily OHLCV bars + dividends + split factors per stock |
 
 Watchlist query pattern:
 ```sql

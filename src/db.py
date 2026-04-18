@@ -349,6 +349,20 @@ def init_db() -> None:
                 published_at           TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS price_history (
+                price_history_uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_uid         INTEGER NOT NULL REFERENCES stocks(stock_uid),
+                date              TEXT NOT NULL,
+                open              REAL,
+                high              REAL,
+                low               REAL,
+                close             REAL NOT NULL,
+                volume            INTEGER,
+                dividend          REAL NOT NULL DEFAULT 0.0,
+                split_factor      REAL NOT NULL DEFAULT 1.0,
+                UNIQUE(stock_uid, date)
+            );
         """)
     _migrate_db(conn)
     _debug("init_db complete")
@@ -776,4 +790,42 @@ def remove_portfolio_position(user_uid: int, stock_uid: int) -> None:
     execute(
         "DELETE FROM portfolio WHERE user_uid = ? AND stock_uid = ?",
         (user_uid, stock_uid),
+    )
+
+
+# ── Price History ──────────────────────────────────────────────────────────────
+
+def upsert_price_history_batch(records: list[dict]) -> None:
+    """Batch upsert OHLCV + dividend rows. All dicts must have identical keys."""
+    if not records:
+        return
+    sql, _ = _build_upsert_sql("price_history", records[0], ("stock_uid", "date"), pk="price_history_uid")
+    params_list = [
+        _build_upsert_sql("price_history", r, ("stock_uid", "date"), pk="price_history_uid")[1]
+        for r in records
+    ]
+    executemany(sql, params_list)
+
+
+def get_price_history(
+    stock_uid: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    sql = "SELECT * FROM price_history WHERE stock_uid = ?"
+    params: tuple = (stock_uid,)
+    if start_date:
+        sql += " AND date >= ?"
+        params += (start_date,)
+    if end_date:
+        sql += " AND date <= ?"
+        params += (end_date,)
+    return query(sql + " ORDER BY date ASC", params)
+
+
+def get_dividend_history(stock_uid: int) -> list[dict]:
+    """Return only rows where a dividend was paid."""
+    return query(
+        "SELECT date, dividend FROM price_history WHERE stock_uid = ? AND dividend > 0 ORDER BY date ASC",
+        (stock_uid,),
     )
