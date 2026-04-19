@@ -122,6 +122,7 @@ def init_db() -> None:
                 -- Descriptive
                 ticker              TEXT NOT NULL,
                 exchange            TEXT NOT NULL,
+                company_name        TEXT,
                 market_index        TEXT,
                 sector              TEXT,
                 industry            TEXT,
@@ -415,6 +416,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN cik TEXT",
         "ALTER TABLE stocks ADD COLUMN ev_revenue REAL",
         "ALTER TABLE stocks ADD COLUMN ev_ebitda REAL",
+        "ALTER TABLE stocks ADD COLUMN company_name TEXT",
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched ON stocks (delisted, last_enriched_at)",
@@ -764,6 +766,25 @@ def upsert_calendar_event(data: dict) -> int:
         refresh_timestamp=True,
     )
     return execute(sql, params)
+
+
+def get_calendar_events_with_ticker(
+    start_date: str,
+    end_date: str,
+    event_type: str | None = None,
+) -> list[dict]:
+    """Return calendar events joined with ticker and company name."""
+    sql = """
+        SELECT ce.*, s.ticker, s.company_name
+        FROM calendar_events ce
+        LEFT JOIN stocks s USING (stock_uid)
+        WHERE ce.event_date BETWEEN ? AND ?
+    """
+    params: tuple = (start_date, end_date)
+    if event_type is not None:
+        sql += " AND ce.event_type = ?"
+        params += (event_type,)
+    return query(sql + " ORDER BY ce.event_date", params)
 
 
 def get_calendar_events(

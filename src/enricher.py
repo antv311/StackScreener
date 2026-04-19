@@ -53,6 +53,7 @@ def _map_info(ticker: str, exchange: str, info: dict) -> dict:
     return {
         "ticker":               ticker.upper(),
         "exchange":             _norm_exchange(info.get("exchange")) or exchange,
+        "company_name":         info.get("shortName") or info.get("longName"),
         "sector":               info.get("sector"),
         "industry":             info.get("industry"),
         "country":              info.get("country"),
