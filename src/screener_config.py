@@ -69,13 +69,22 @@ CONFIDENCE_HIGH:   str = "high"
 CONFIDENCE_MEDIUM: str = "medium"
 CONFIDENCE_LOW:    str = "low"
 
-# ── Supply Chain Severity Rank ─────────────────────────────────────────────────
+# ── Supply Chain Event Severity ────────────────────────────────────────────────
+SEVERITY_CRITICAL: str = "CRITICAL"
+SEVERITY_HIGH:     str = "HIGH"
+SEVERITY_MEDIUM:   str = "MEDIUM"
+SEVERITY_LOW:      str = "LOW"
+
 SEVERITY_RANK: dict[str, int] = {
-    "CRITICAL": 4,
-    "HIGH":     3,
-    "MEDIUM":   2,
-    "LOW":      1,
+    SEVERITY_CRITICAL: 4,
+    SEVERITY_HIGH:     3,
+    SEVERITY_MEDIUM:   2,
+    SEVERITY_LOW:      1,
 }
+
+# ── Event Stock Roles ──────────────────────────────────────────────────────────
+ROLE_IMPACTED:    str = "impacted"
+ROLE_BENEFICIARY: str = "beneficiary"
 
 # ── Attribution ────────────────────────────────────────────────────────────────
 DEFAULT_AUTHOR: str = "StackScreener"

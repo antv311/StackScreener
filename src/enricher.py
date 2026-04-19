@@ -56,6 +56,7 @@ def _map_info(ticker: str, exchange: str, info: dict) -> dict:
         "sector":               info.get("sector"),
         "industry":             info.get("industry"),
         "country":              info.get("country"),
+        "business_summary":     info.get("longBusinessSummary"),
         "market_cap":           info.get("marketCap"),
         "dividend_yield":       info.get("dividendYield"),
         "float_short":          info.get("shortPercentOfFloat"),

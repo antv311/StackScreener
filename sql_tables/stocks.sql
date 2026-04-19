@@ -15,6 +15,7 @@ CREATE TABLE stocks (
     sector TEXT,
     industry TEXT,
     country TEXT,
+    business_summary TEXT,  -- yfinance longBusinessSummary; used for supply chain keyword matching
     market_cap REAL,
     dividend_yield REAL,
     float_short REAL,

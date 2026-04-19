@@ -11,7 +11,7 @@ StackScreener/
 │   ├── screener.py                       ← core scoring engine                                [NEXT]
 │   ├── screener_run.py                   ← scan runner / CLI entry point                      [NEXT]
 │   ├── screener_post_processing.py       ← normalized scoring output                          [PLANNED]
-│   ├── supply_chain.py                   ← supply chain signal ingestion + sector mapping     [PLANNED]
+│   ├── supply_chain.py                   ← Tier 2 curated seed + Tier 1 sector matching       [PARTIAL]
 │   ├── inst_flow.py                      ← congressional trades + SEC insider/13F ingestion   [PLANNED]
 │   ├── app.py                            ← desktop TUI entry point (Textual)                  [PLANNED]
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                [PLANNED]
@@ -89,6 +89,9 @@ Tables must be created in this order (FK dependencies):
 | `python src/enricher.py --ipo-only` | Run daily IPO calendar check only |
 | `python src/enricher.py --history-only` | Fetch 5y price history for all active stocks |
 | `python src/enricher.py --include-delisted` | Include delisted stocks in enrichment run |
+| `python src/supply_chain.py --seed-tier2` | Seed curated Tier 2 supply chain relationships |
+| `python src/supply_chain.py --list-events` | List all supply chain events in the database |
+| `python src/supply_chain.py --candidates N` | Print Tier 1 sector candidates for event N |
 | `python src/screener_run.py` | Run a full scan (once scoring engine is built) |
 
 ## Data Sources (Free — No Paid API Keys Required)

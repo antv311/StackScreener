@@ -1,6 +1,8 @@
 import sqlite3
 
 import crypto
+import json
+
 from screener_config import (
     DB_PATH, DEBUG_MODE,
     STALENESS_DAYS, HISTORY_STALENESS_DAYS,
@@ -124,6 +126,7 @@ def init_db() -> None:
                 sector              TEXT,
                 industry            TEXT,
                 country             TEXT,
+                business_summary    TEXT,
                 market_cap          REAL,
                 dividend_yield      REAL,
                 float_short         REAL,
@@ -389,6 +392,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE supply_chain_events ADD COLUMN commodity TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN source_url TEXT",
         "ALTER TABLE stocks ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE stocks ADD COLUMN business_summary TEXT",
     ]
     for sql in migrations:
         try:
@@ -519,6 +523,32 @@ def get_pending_history(limit: int | None = None, skip_delisted: bool = True) ->
         sql += " LIMIT ?"
         params += (limit,)
     return query(sql, params)
+
+
+def get_sector_candidates(supply_chain_event_uid: int) -> list[dict]:
+    """Return active stocks whose sector or industry matches the event's affected sectors.
+
+    Used for Tier 1 (broad) supply chain matching. Returns stocks ordered by
+    market cap descending so the most significant names surface first.
+    """
+    event = get_event(supply_chain_event_uid)
+    if not event:
+        return []
+    targets = (
+        json.loads(event.get("affected_sectors") or "[]")
+        + json.loads(event.get("affected_industries") or "[]")
+    )
+    targets = list(dict.fromkeys(targets))  # deduplicate, preserve order
+    if not targets:
+        return []
+    placeholders = ", ".join("?" * len(targets))
+    return query(
+        f"SELECT stock_uid, ticker, sector, industry, market_cap, business_summary "
+        f"FROM stocks WHERE delisted = 0 "
+        f"AND (sector IN ({placeholders}) OR industry IN ({placeholders})) "
+        f"ORDER BY market_cap DESC NULLS LAST",
+        tuple(targets) * 2,
+    )
 
 
 def ipo_checked_today() -> bool:

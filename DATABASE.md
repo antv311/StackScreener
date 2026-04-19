@@ -89,6 +89,7 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `market_index` | TEXT | |
 | `sector`, `industry` | TEXT | GICS |
 | `country` | TEXT | |
+| `business_summary` | TEXT | yfinance `longBusinessSummary` — used for supply chain keyword matching |
 | `market_cap` | REAL | |
 | `price` | REAL | 0.0 = pre-IPO / not yet listed |
 | `ipo_date` | TEXT | YYYY-MM-DD |
