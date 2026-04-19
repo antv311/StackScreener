@@ -31,6 +31,8 @@ StackScreener/
 │   ├── source_signals.sql                ← signals from congressional trades, SEC filings, Yahoo, options flow
 │   ├── research_reports.sql             ← long-form research content tagged by type
 │   └── price_history.sql               ← daily OHLCV bars + dividends + split factors
+├── man/
+│   └── enricher.1                        ← man page for enricher CLI (install to /usr/share/man/man1/)
 ├── Mock_up/
 │   ├── HomePage_.jpg
 │   ├── Logisitc_.jpg

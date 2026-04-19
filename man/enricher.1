@@ -1,0 +1,180 @@
+.TH ENRICHER 1 "April 2026" "StackScreener" "StackScreener Manual"
+.SH NAME
+enricher \- background data enrichment worker for StackScreener
+.SH SYNOPSIS
+.B python src/enricher.py
+[\fB\-\-rate\fR \fIS\fR]
+[\fB\-\-workers\fR \fIN\fR]
+[\fB\-\-limit\fR \fIN\fR]
+[\fB\-\-ipo\-only\fR]
+[\fB\-\-history\-only\fR]
+[\fB\-\-history\-period\fR \fIPERIOD\fR]
+[\fB\-\-include\-delisted\fR]
+.SH DESCRIPTION
+.B enricher
+is a rate-limited background worker that pulls financial data from Yahoo Finance
+(via yfinance) and writes it to the StackScreener SQLite database.
+.PP
+It performs two independent jobs:
+.TP
+.B Fundamentals enrichment
+Fetches price, valuation ratios, margins, ownership, and other per-stock
+fundamentals for every stock in the database whose data is missing or older
+than \fBSTALENESS_DAYS\fR (default: 1 day). Progress is committed after each
+stock, so the process is safe to kill and restart at any time.
+.TP
+.B Price history
+Fetches daily OHLCV bars, dividends, and split factors for every listed stock
+(price > 0) whose history is missing or has not been updated within
+\fBHISTORY_STALENESS_DAYS\fR (default: 3 days, to account for weekends and
+market holidays).
+.PP
+On every startup,
+.B enricher
+also runs a daily IPO calendar check (Yahoo Finance Calendar API) to pre-seed
+upcoming listings into the database before they appear in the NYSE/NASDAQ
+screener. This check runs at most once per calendar day regardless of how many
+times the worker is invoked.
+.PP
+Delisted stocks (those with \fBdelisted = 1\fR in the database) are skipped by
+default in all operations. Use \fB\-\-include\-delisted\fR to override.
+.SH OPTIONS
+.TP
+.BI \-\-rate " S"
+Seconds to sleep between API requests. Applies per worker thread.
+Lower values increase throughput but raise the risk of Yahoo Finance
+rate-limiting. Default: \fB0.5\fR.
+.TP
+.BI \-\-workers " N"
+Number of parallel worker threads. Each thread pulls jobs from a shared queue
+and respects the \fB\-\-rate\fR sleep independently. Start with 1; increase
+cautiously — Yahoo Finance will throttle aggressive clients. Default: \fB1\fR.
+.TP
+.BI \-\-limit " N"
+Process at most \fIN\fR stocks then exit. Useful for smoke-testing or
+incremental refreshes. Stocks are processed in staleness order (oldest first).
+.TP
+.B \-\-ipo\-only
+Run only the daily IPO calendar check, then exit immediately. The
+fundamentals enrichment and price history steps are skipped entirely.
+.TP
+.B \-\-history\-only
+Fetch price history only; skip fundamentals enrichment. The IPO calendar
+check still runs at startup.
+.TP
+.BI \-\-history\-period " PERIOD"
+yfinance period string controlling how far back history is fetched.
+Only meaningful when fetching history. Default: \fB5y\fR.
+.PP
+.RS
+Valid values:
+.RS
+.TS
+l l.
+1d	Last trading day
+5d	Last 5 trading days
+1mo	Last 1 month
+3mo	Last 3 months
+6mo	Last 6 months
+1y	Last 1 year
+2y	Last 2 years
+5y	Last 5 years (default)
+10y	Last 10 years
+ytd	Year to date
+max	Full available history
+.TE
+.RE
+.RE
+.TP
+.B \-\-include\-delisted
+Include stocks marked \fBdelisted = 1\fR in the database. By default all
+enrichment and history fetches skip delisted stocks. This flag re-enables
+them for the current run only — it does not change the database flag.
+.SH EXAMPLES
+.TP
+Run full fundamentals enrichment until all stocks are up to date:
+.B python src/enricher.py
+.TP
+Run at a faster rate with 2 parallel workers:
+.B python src/enricher.py \-\-rate 0.3 \-\-workers 2
+.TP
+Enrich only the 50 stalest stocks then stop:
+.B python src/enricher.py \-\-limit 50
+.TP
+Fetch 5-year price history for all active stocks:
+.B python src/enricher.py \-\-history\-only
+.TP
+Backfill the last year of price history only:
+.B python src/enricher.py \-\-history\-only \-\-history\-period 1y
+.TP
+Run only the IPO calendar check (e.g. from a daily cron job):
+.B python src/enricher.py \-\-ipo\-only
+.TP
+Smoke-test enrichment against 10 stocks:
+.B python src/enricher.py \-\-limit 10
+.SH DATABASE
+All output is written to \fBstackscreener.db\fR via \fBdb.py\fR. Relevant tables:
+.TP
+.B stocks
+Fundamentals, price, ownership, and valuation fields. The \fBlast_enriched_at\fR
+column tracks when each stock was last updated. \fBdelisted = 1\fR marks stocks
+that no longer trade.
+.TP
+.B price_history
+Daily OHLCV rows keyed on \fB(stock_uid, date)\fR. Safe to re-fetch — rows are
+upserted on conflict. The \fBdividend\fR column is 0.0 on non-dividend dates;
+\fBsplit_factor\fR is 1.0 when no split occurred.
+.TP
+.B calendar_events
+Upcoming IPO records written by the daily IPO calendar check. Pre-seeded
+stocks (ticker known before listing) are also inserted into \fBstocks\fR with
+\fBprice = 0.0\fR.
+.SH CONFIGURATION
+Tunable constants live in \fBsrc/screener_config.py\fR:
+.TP
+.B STALENESS_DAYS
+How many days before fundamentals are considered stale. Default: 1.
+.TP
+.B HISTORY_STALENESS_DAYS
+How many days before price history is considered stale. Default: 3.
+.TP
+.B IPO_LOOKAHEAD_DAYS
+How many calendar days ahead to fetch IPO events. Default: 90.
+.TP
+.B DEBUG_MODE
+Set to \fBTrue\fR to enable verbose per-ticker logging. Default: False.
+.SH EXIT STATUS
+.TP
+.B 0
+Completed successfully (including partial runs with \fB\-\-limit\fR).
+.TP
+.B non-zero
+Unhandled exception during startup (e.g. missing database, import error).
+Per-ticker failures are logged inline and do not affect exit status.
+.SH FILES
+.TP
+.B stackscreener.db
+SQLite database. Created by \fBpython src/seeder.py\fR before enricher is run.
+.TP
+.B src/enricher.py
+Main worker script.
+.TP
+.B src/db.py
+All database access. Never call this directly — use enricher as the entry point.
+.TP
+.B src/screener_config.py
+All tunable constants.
+.SH SEE ALSO
+.B seeder(1),
+.B screener_run(1)
+.SH NOTES
+The database must be initialised with \fBpython src/seeder.py\fR before
+running the enricher. Running enricher on an empty database is safe but will
+produce no output.
+.PP
+Yahoo Finance rate-limits aggressive clients. If you see a high failure rate,
+increase \fB\-\-rate\fR or reduce \fB\-\-workers\fR.
+.SH AUTHOR
+Tony (antv311). Part of the StackScreener project.
+.br
+https://github.com/antv311/StackScreener
