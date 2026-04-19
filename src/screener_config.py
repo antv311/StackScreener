@@ -28,8 +28,10 @@ DEBT_EQUITY_MAX:    float = 2.0
 PEG_MAX:            float = 3.0
 
 # ── Scan Defaults ──────────────────────────────────────────────────────────────
-SCAN_TOP_N:      int = 50
-STALENESS_DAYS:  int = 1  # refresh stock_financials if older than this
+SCAN_TOP_N:              int = 50
+STALENESS_DAYS:          int = 1   # refresh fundamentals if older than this
+HISTORY_STALENESS_DAYS:  int = 3   # accounts for weekends + holidays
+IPO_LOOKAHEAD_DAYS:      int = 90
 
 # ── Scan Status ────────────────────────────────────────────────────────────────
 SCAN_STATUS_RUNNING:  str = "running"

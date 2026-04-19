@@ -4,7 +4,7 @@
 StackScreener/
 ├── src/
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, provider names, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (12 tables)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (13 tables, 2 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
@@ -20,7 +20,7 @@ StackScreener/
 ├── sql_tables/                           ← canonical SQL table definitions (reference only — schema lives in db.py)
 │   ├── users.sql                         ← user accounts, password hash/salt, admin flag, totp_secret (2FA prep)
 │   ├── watchlists.sql                    ← named watchlists, scoped to user_uid
-│   ├── stocks.sql                        ← all tracked symbols — descriptive, fundamental, technical, last_enriched_at
+│   ├── stocks.sql                        ← all tracked symbols — descriptive, fundamental, technical, last_enriched_at, delisted
 │   ├── api_keys.sql                      ← Fernet-encrypted API credentials per user/provider
 │   ├── portfolio.sql                     ← user holdings (Plaid-ready: quantity, avg_cost, plaid_account_id)
 │   ├── scans.sql                         ← scan run metadata (mode, status, counts, timestamps)
@@ -44,7 +44,7 @@ StackScreener/
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
 ├── ROADMAP.md                            ← phased development plan with progress tracking
-├── DATABASE.md                           ← full database schema map (all 12 tables, FKs, query patterns)
+├── DATABASE.md                           ← full database schema map (all 13 tables, FKs, query patterns)
 ├── README.md                             ← GitHub landing page
 ├── tree.md                               ← this file
 ├── requirements.txt                      ← Python dependencies
@@ -82,9 +82,11 @@ Tables must be created in this order (FK dependencies):
 | `python src/seeder.py --schema-only` | Initialize DB schema + seed admin user |
 | `python src/seeder.py` | Full seed: schema + admin + NYSE/NASDAQ universe |
 | `python src/seeder.py --limit N` | Seed with at most N tickers (for testing) |
-| `python src/enricher.py` | Enrich all stocks with full yfinance fundamentals |
+| `python src/enricher.py` | Enrich all active stocks with full yfinance fundamentals |
 | `python src/enricher.py --limit N` | Enrich N stocks then stop |
 | `python src/enricher.py --ipo-only` | Run daily IPO calendar check only |
+| `python src/enricher.py --history-only` | Fetch 5y price history for all active stocks |
+| `python src/enricher.py --include-delisted` | Include delisted stocks in enrichment run |
 | `python src/screener_run.py` | Run a full scan (once scoring engine is built) |
 
 ## Data Sources (Free — No Paid API Keys Required)

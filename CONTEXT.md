@@ -86,13 +86,17 @@ Layer 1 — Data Sources
   worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
-  SQLite via stackscreener.db    → 13 tables (see schema below)
+  SQLite via stackscreener.db    → 13 tables + 2 covering indexes (see schema below)
   API keys encrypted via Fernet, master key stored in OS keyring
+  db.py helpers: get_pending_enrichment, get_pending_history, ipo_checked_today,
+                 mark_delisted, get_active_stocks (all SQL lives in db.py only)
 
 Layer 3 — Data Pipeline
   seeder.py                      → one-time schema init + NYSE/NASDAQ universe seed
+                                   6,924 stocks seeded (NMS/NGM/NCM/NYQ)
   enricher.py                    → rate-limited background worker; fills fundamentals,
-                                   daily IPO calendar check via Yahoo Finance
+                                   daily IPO calendar check via Yahoo Finance;
+                                   5y price history for all listed stocks complete
 
 Layer 4 — Scoring Engine
   screener.py                    → EV/R, PE, EV/EBITDA, profit margin, PEG,

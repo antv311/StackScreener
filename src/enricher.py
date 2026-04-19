@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 import yfinance as yf
 
 import db
-from screener_config import DEBUG_MODE, STALENESS_DAYS
+from screener_config import DEBUG_MODE, IPO_LOOKAHEAD_DAYS
 
 _EXCHANGE_NORM: dict[str, str] = {
     "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
@@ -88,21 +88,6 @@ def _map_info(ticker: str, exchange: str, info: dict) -> dict:
     }
 
 
-def _get_pending(limit: int | None) -> list[dict]:
-    """Return stocks that need enrichment: never enriched or data is stale."""
-    sql = """
-        SELECT stock_uid, ticker, exchange FROM stocks
-        WHERE last_enriched_at IS NULL
-           OR last_enriched_at < datetime('now', ?)
-        ORDER BY last_enriched_at ASC NULLS FIRST
-    """
-    params: tuple = (f"-{STALENESS_DAYS} days",)
-    if limit:
-        sql += " LIMIT ?"
-        params += (limit,)
-    return db.query(sql, params)
-
-
 def _enrich_one(stock: dict) -> bool:
     ticker = stock["ticker"]
     try:
@@ -147,22 +132,9 @@ def _worker(
 
 # ── IPO calendar ──────────────────────────────────────────────────────────────
 
-_IPO_LOOKAHEAD_DAYS = 90
-
-
-def _ipo_checked_today() -> bool:
-    """Return True if the IPO calendar was already fetched today."""
-    row = db.query_one(
-        "SELECT fetched_at FROM calendar_events WHERE event_type = 'ipo' ORDER BY fetched_at DESC"
-    )
-    if not row:
-        return False
-    return row["fetched_at"][:10] == datetime.now().strftime("%Y-%m-%d")
-
-
 def _fetch_ipo_calendar():
     today = datetime.now()
-    end   = today + timedelta(days=_IPO_LOOKAHEAD_DAYS)
+    end   = today + timedelta(days=IPO_LOOKAHEAD_DAYS)
     return yf.Calendars().get_ipo_info_calendar(
         today.strftime("%Y-%m-%d"),
         end.strftime("%Y-%m-%d"),
@@ -175,7 +147,7 @@ def check_upcoming_ipos() -> None:
     Runs at most once per day. Pre-seeds stocks table for any IPO that already
     has a ticker symbol so it can be watched before it lists.
     """
-    if _ipo_checked_today():
+    if db.ipo_checked_today():
         if DEBUG_MODE:
             print("[enricher] IPO calendar already checked today, skipping")
         return
@@ -241,6 +213,7 @@ def run(
     ipo_only: bool = False,
     history_only: bool = False,
     history_period: str = "5y",
+    skip_delisted: bool = True,
 ) -> None:
     check_upcoming_ipos()
 
@@ -248,10 +221,10 @@ def run(
         return
 
     if history_only:
-        _run_history(rate_limit, num_workers, limit, history_period)
+        _run_history(rate_limit, num_workers, limit, history_period, skip_delisted)
         return
 
-    pending = _get_pending(limit)
+    pending = db.get_pending_enrichment(limit, skip_delisted)
     if not pending:
         print("All stocks are up to date.")
         return
@@ -278,32 +251,6 @@ def run(
 
 
 # ── Price history ──────────────────────────────────────────────────────────────
-
-_HISTORY_STALENESS_DAYS = 3  # accounts for weekends + holidays
-
-
-def _get_pending_history(limit: int | None) -> list[dict]:
-    """Return listed stocks whose price history is missing or stale."""
-    sql = """
-        SELECT s.stock_uid, s.ticker, s.exchange
-        FROM stocks s
-        WHERE s.price > 0
-          AND (
-              NOT EXISTS (
-                  SELECT 1 FROM price_history ph WHERE ph.stock_uid = s.stock_uid
-              )
-              OR (
-                  SELECT MAX(ph.date) FROM price_history ph WHERE ph.stock_uid = s.stock_uid
-              ) < date('now', ?)
-          )
-        ORDER BY s.ticker ASC
-    """
-    params: tuple = (f"-{_HISTORY_STALENESS_DAYS} days",)
-    if limit:
-        sql += " LIMIT ?"
-        params += (limit,)
-    return db.query(sql, params)
-
 
 def _map_history_row(stock_uid: int, ts, row) -> dict:
     splits = float(row.get("Stock Splits", 0) or 0)
@@ -369,8 +316,9 @@ def _run_history(
     num_workers: int,
     limit: int | None,
     period: str,
+    skip_delisted: bool = True,
 ) -> None:
-    pending = _get_pending_history(limit)
+    pending = db.get_pending_history(limit, skip_delisted)
     if not pending:
         print("Price history is up to date.")
         return
@@ -407,7 +355,8 @@ def main() -> None:
     parser.add_argument("--limit",          type=int,   default=None, metavar="N",      help="Max stocks to process then exit")
     parser.add_argument("--ipo-only",       action="store_true",                        help="Run IPO calendar check only, then exit")
     parser.add_argument("--history-only",   action="store_true",                        help="Fetch price history only, then exit")
-    parser.add_argument("--history-period", type=str,   default="5y", metavar="PERIOD", help="yfinance history period (default: 5y). Options: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max")
+    parser.add_argument("--history-period",   type=str,   default="5y", metavar="PERIOD", help="yfinance history period (default: 5y). Options: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max")
+    parser.add_argument("--include-delisted", action="store_true",                        help="Include delisted stocks (default: skip them)")
     args = parser.parse_args()
 
     run(
@@ -417,6 +366,7 @@ def main() -> None:
         ipo_only=args.ipo_only,
         history_only=args.history_only,
         history_period=args.history_period,
+        skip_delisted=not args.include_delisted,
     )
 
 

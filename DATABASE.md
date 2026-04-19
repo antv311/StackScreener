@@ -106,12 +106,21 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `average_volume`, `current_volume` | INTEGER | |
 | `last_enriched_at` | TEXT | NULL = never enriched; staleness check |
 | `macro_signal` | TEXT | reserved for macro overlay |
+| `delisted` | INTEGER | 0 = active (default), 1 = delisted — skipped by enricher and scans |
+
+**Indexes:**
+- `idx_stocks_delisted_enriched` on `(delisted, last_enriched_at)` — covers enrichment staleness query
+- `idx_stocks_delisted_price` on `(delisted, price)` — covers price history pending query
 
 ```sql
--- Stocks needing enrichment:
-SELECT * FROM stocks WHERE last_enriched_at IS NULL
-   OR last_enriched_at < datetime('now', '-1 days')
-ORDER BY last_enriched_at ASC NULLS FIRST
+-- Stocks needing enrichment (use db.get_pending_enrichment()):
+SELECT stock_uid, ticker, exchange FROM stocks
+WHERE (last_enriched_at IS NULL OR last_enriched_at < datetime('now', '-1 days'))
+  AND delisted = 0
+ORDER BY last_enriched_at ASC NULLS FIRST;
+
+-- Mark a stock delisted (use db.mark_delisted(stock_uid)):
+UPDATE stocks SET delisted = 1 WHERE stock_uid = ?;
 ```
 
 ---

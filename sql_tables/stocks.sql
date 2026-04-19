@@ -100,5 +100,8 @@ CREATE TABLE stocks (
     macro_signal TEXT,
 
     -- Enrichment tracking
-    last_enriched_at TEXT   -- NULL = never enriched; updated by enricher.py
+    last_enriched_at TEXT,  -- NULL = never enriched; updated by enricher.py
+
+    -- Status
+    delisted INTEGER NOT NULL DEFAULT 0  -- 1 = delisted, excluded from enrichment and scans by default
 );

@@ -3,6 +3,7 @@ import sqlite3
 import crypto
 from screener_config import (
     DB_PATH, DEBUG_MODE,
+    STALENESS_DAYS, HISTORY_STALENESS_DAYS,
     SCAN_STATUS_COMPLETE, SCAN_STATUS_FAILED,
     EVENT_STATUS_ACTIVE, EVENT_STATUS_RESOLVED,
     CONFIDENCE_MEDIUM, DEFAULT_AUTHOR,
@@ -204,6 +205,9 @@ def init_db() -> None:
                 -- Enrichment tracking
                 last_enriched_at TEXT,
 
+                -- Status
+                delisted INTEGER NOT NULL DEFAULT 0,
+
                 UNIQUE(ticker, exchange)
             );
 
@@ -363,6 +367,11 @@ def init_db() -> None:
                 split_factor      REAL NOT NULL DEFAULT 1.0,
                 UNIQUE(stock_uid, date)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched
+                ON stocks (delisted, last_enriched_at);
+            CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price
+                ON stocks (delisted, price);
         """)
     _migrate_db(conn)
     _debug("init_db complete")
@@ -379,6 +388,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE supply_chain_events ADD COLUMN trade_route TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN commodity TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN source_url TEXT",
+        "ALTER TABLE stocks ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -457,6 +467,69 @@ def remove_from_watchlist(stock_uid: int) -> None:
         "UPDATE stocks SET watchlist_uid = NULL, is_watched = 0 WHERE stock_uid = ?",
         (stock_uid,),
     )
+
+
+def mark_delisted(stock_uid: int, delisted: bool = True) -> None:
+    execute(
+        "UPDATE stocks SET delisted = ? WHERE stock_uid = ?",
+        (delisted, stock_uid),
+    )
+
+
+def get_active_stocks() -> list[dict]:
+    """Return all non-delisted stocks."""
+    return query("SELECT * FROM stocks WHERE delisted = 0 ORDER BY ticker")
+
+
+def get_pending_enrichment(limit: int | None = None, skip_delisted: bool = True) -> list[dict]:
+    """Return stocks needing enrichment: never enriched or stale."""
+    sql = """
+        SELECT stock_uid, ticker, exchange FROM stocks
+        WHERE (last_enriched_at IS NULL
+           OR last_enriched_at < datetime('now', ?))
+    """
+    params: tuple = (f"-{STALENESS_DAYS} days",)
+    if skip_delisted:
+        sql += " AND delisted = 0"
+    sql += " ORDER BY last_enriched_at ASC NULLS FIRST"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return query(sql, params)
+
+
+def get_pending_history(limit: int | None = None, skip_delisted: bool = True) -> list[dict]:
+    """Return stocks whose price history is missing or stale."""
+    sql = """
+        SELECT s.stock_uid, s.ticker, s.exchange
+        FROM stocks s
+        LEFT JOIN (
+            SELECT stock_uid, MAX(date) AS max_date
+            FROM price_history
+            GROUP BY stock_uid
+        ) ph ON ph.stock_uid = s.stock_uid
+        WHERE s.price > 0
+    """
+    if skip_delisted:
+        sql += " AND s.delisted = 0"
+    sql += f" AND (ph.stock_uid IS NULL OR ph.max_date < date('now', ?))"
+    sql += " ORDER BY s.ticker ASC"
+    params: tuple = (f"-{HISTORY_STALENESS_DAYS} days",)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return query(sql, params)
+
+
+def ipo_checked_today() -> bool:
+    """Return True if the IPO calendar was already fetched today."""
+    from datetime import datetime
+    row = query_one(
+        "SELECT fetched_at FROM calendar_events WHERE event_type = 'ipo' ORDER BY fetched_at DESC"
+    )
+    if not row:
+        return False
+    return row["fetched_at"][:10] == datetime.now().strftime("%Y-%m-%d")
 
 
 # ── Scans ──────────────────────────────────────────────────────────────────────
