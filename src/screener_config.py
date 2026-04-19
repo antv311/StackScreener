@@ -86,6 +86,13 @@ SEVERITY_RANK: dict[str, int] = {
 ROLE_IMPACTED:    str = "impacted"
 ROLE_BENEFICIARY: str = "beneficiary"
 
+# ── EDGAR ──────────────────────────────────────────────────────────────────────
+EDGAR_RATE_LIMIT:     float = 0.11  # seconds between requests; SEC allows 10 req/s
+EDGAR_STALENESS_DAYS: int   = 90    # re-fetch XBRL facts quarterly
+
+FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
+FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"
+
 # ── Attribution ────────────────────────────────────────────────────────────────
 DEFAULT_AUTHOR: str = "StackScreener"
 

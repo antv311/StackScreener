@@ -103,6 +103,9 @@ CREATE TABLE stocks (
     -- Enrichment tracking
     last_enriched_at TEXT,  -- NULL = never enriched; updated by enricher.py
 
+    -- EDGAR
+    cik TEXT,               -- SEC Central Index Key; populated by edgar.py --seed-ciks
+
     -- Status
     delisted INTEGER NOT NULL DEFAULT 0  -- 1 = delisted, excluded from enrichment and scans by default
 );

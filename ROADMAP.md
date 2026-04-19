@@ -81,33 +81,58 @@ entirely from the TUI without touching any Python files.
 
 Add the core intelligence layer that makes StackScreener different from any other screener.
 
-### 2a — Disruption Ingestion
+### 2a — Disruption Events (partial ✅)
 
-- [ ] Integrate supply chain data source (worldmonitor-osint or equivalent)
-- [ ] Define disruption event schema (type, region, affected sectors, severity, date)
-- [ ] Store events in `supply_chain_events` table via `db.py`
+- [x] `supply_chain_events` table — schema, CRUD helpers, sector/region/severity fields
+- [x] `event_stocks` junction table — role (impacted/beneficiary), cannot_provide, will_redirect
+- [x] `supply_chain.py --seed-tier2` — 6 curated events, 31 company links seeded
+- [x] `db.get_sector_candidates()` — Tier 1 broad sector matching
+- [ ] Automated ingestion of new disruption events (worldmonitor-osint or equivalent)
 - [ ] Automated refresh on app startup (or on demand)
 
-### 2b — Sector Mapping
+### 2b — EDGAR XBRL Data Pipeline (partial ✅)
 
-- [ ] Map disruption events → affected GICS sectors and industries
-- [ ] Map disruption events → potential beneficiary sectors (the "gap fillers")
-- [ ] Configurable mapping table in `screener_config.py`
+- [x] `edgar_facts` table — geographic revenue + customer concentration per stock per year
+- [x] `stocks.cik` — SEC CIK mapping for every ticker
+- [x] `edgar.py --seed-ciks` — map all 6,900 tickers to SEC CIKs
+- [x] `edgar.py --fetch-facts` — pull XBRL geographic revenue + customer concentration
+- [x] `db.get_stocks_by_china_exposure()` — query stocks by China revenue threshold
+- [ ] Wire geographic exposure into supply chain scoring (high China revenue = higher impact score)
 
-### 2c — Thematic Scan Mode
+### 2c — EDGAR LLM Extraction (pending P40 GPU)
+
+- [ ] Run Llama 3.1 70B (4-bit quant) locally via Ollama on NVIDIA P40 (24GB VRAM)
+- [ ] `edgar.py --extract-relationships` — feed 10-K Item 1A to LLM, extract supplier/customer links
+- [ ] Auto-populate `event_stocks` with medium-confidence relationships from filings
+- [ ] Zero API cost; runs entirely local
+
+### 2d — News Aggregation
+
+New module: `src/news.py`
+New table: `news_articles` (article_uid, stock_uid, source, headline, summary, url, published_at, sentiment)
+
+- [ ] **Reuters RSS** — free feed, no key required
+- [ ] **Yahoo Finance** — `yf.Ticker(ticker).news` already available via yfinance
+- [ ] **WSJ PDF** — parse daily newspaper PDF via `pypdf`; extract headlines + article text
+- [ ] Tag articles with `stock_uid` via ticker mention detection
+- [ ] Add news section to Research screen in app
+
+### 2e — Financial Podcast Transcripts
+
+- [ ] **WSJ Podcast** — transcripts available on wsj.com (scrape or RSS)
+- [ ] **Motley Fool Money** — transcripts available on fool.com
+- [ ] Parse for ticker mentions → store in `source_signals` table
+- [ ] Feed sentiment signals into Stock Picks scoring
+
+### 2f — Thematic Scan Mode
 
 - [ ] New scan mode: `run_thematic` — filters universe to disruption-relevant sectors
 - [ ] Supply chain signal score layered on top of fundamental score
+  (Tier 1 sector match + Tier 2 curated links + EDGAR geographic exposure)
 - [ ] Output: ranked list of gap-filler candidates with disruption context
 
-### 2d — App Integration
-
-- [ ] Supply Chain Events view populated from `supply_chain_events` table
-- [ ] Thematic scan wired through app
-- [ ] Results annotated with which disruption event triggered inclusion
-
-**Exit criteria:** Given a real supply chain event (e.g. port closure, sanctions), StackScreener
-automatically surfaces a ranked list of companies positioned to benefit.
+**Exit criteria:** Given a real supply chain event, StackScreener surfaces a ranked list of
+companies positioned to benefit, with geographic exposure data and news signals attached.
 
 ---
 

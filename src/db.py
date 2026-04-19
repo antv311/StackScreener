@@ -208,6 +208,9 @@ def init_db() -> None:
                 -- Enrichment tracking
                 last_enriched_at TEXT,
 
+                -- EDGAR
+                cik TEXT,
+
                 -- Status
                 delisted INTEGER NOT NULL DEFAULT 0,
 
@@ -375,6 +378,16 @@ def init_db() -> None:
                 ON stocks (delisted, last_enriched_at);
             CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price
                 ON stocks (delisted, price);
+
+            CREATE TABLE IF NOT EXISTS edgar_facts (
+                edgar_fact_uid  INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_uid       INTEGER NOT NULL REFERENCES stocks(stock_uid),
+                fact_type       TEXT NOT NULL,
+                period          TEXT NOT NULL,
+                value_json      TEXT NOT NULL,
+                fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(stock_uid, fact_type, period)
+            );
         """)
     _migrate_db(conn)
     _debug("init_db complete")
@@ -393,6 +406,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE supply_chain_events ADD COLUMN source_url TEXT",
         "ALTER TABLE stocks ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE stocks ADD COLUMN business_summary TEXT",
+        "ALTER TABLE stocks ADD COLUMN cik TEXT",
     ]
     for sql in migrations:
         try:
@@ -893,6 +907,47 @@ def remove_portfolio_position(user_uid: int, stock_uid: int) -> None:
     execute(
         "DELETE FROM portfolio WHERE user_uid = ? AND stock_uid = ?",
         (user_uid, stock_uid),
+    )
+
+
+# ── EDGAR Facts ───────────────────────────────────────────────────────────────
+
+def upsert_edgar_fact(data: dict) -> int:
+    """Insert or update an EDGAR fact keyed on (stock_uid, fact_type, period)."""
+    sql, params = _build_upsert_sql(
+        "edgar_facts", data,
+        ("stock_uid", "fact_type", "period"),
+        pk="edgar_fact_uid",
+        refresh_timestamp=True,
+    )
+    return execute(sql, params)
+
+
+def get_edgar_facts(stock_uid: int, fact_type: str) -> list[dict]:
+    return query(
+        "SELECT * FROM edgar_facts WHERE stock_uid = ? AND fact_type = ? ORDER BY period DESC",
+        (stock_uid, fact_type),
+    )
+
+
+def get_stocks_by_china_exposure(min_pct: float = 0.10) -> list[dict]:
+    """Return stocks whose most recent geographic_revenue fact shows China >= min_pct."""
+    return query(
+        """
+        SELECT s.stock_uid, s.ticker, s.sector, s.market_cap,
+               ef.value_json, ef.period
+        FROM stocks s
+        JOIN edgar_facts ef ON ef.stock_uid = s.stock_uid
+        WHERE s.delisted = 0
+          AND ef.fact_type = 'geographic_revenue'
+          AND ef.period = (
+              SELECT MAX(ef2.period) FROM edgar_facts ef2
+              WHERE ef2.stock_uid = s.stock_uid AND ef2.fact_type = 'geographic_revenue'
+          )
+          AND CAST(json_extract(ef.value_json, '$.China') AS REAL) >= ?
+        ORDER BY json_extract(ef.value_json, '$.China') DESC
+        """,
+        (min_pct,),
     )
 
 

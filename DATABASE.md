@@ -107,6 +107,7 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `average_volume`, `current_volume` | INTEGER | |
 | `last_enriched_at` | TEXT | NULL = never enriched; staleness check |
 | `macro_signal` | TEXT | reserved for macro overlay |
+| `cik` | TEXT | SEC Central Index Key — populated by `edgar.py --seed-ciks` |
 | `delisted` | INTEGER | 0 = active (default), 1 = delisted — skipped by enricher and scans |
 
 **Indexes:**
@@ -310,6 +311,32 @@ Long-form research cards shown in the Research → Research Reports tab.
 | `author` | TEXT | default `StackScreener` |
 | `source_url` | TEXT | |
 | `published_at`, `updated_at` | TEXT | |
+
+---
+
+### edgar_facts
+Structured XBRL data pulled from SEC EDGAR for each stock. Refreshed quarterly.
+
+| Column | Type | Notes |
+|---|---|---|
+| `edgar_fact_uid` | INTEGER PK | |
+| `stock_uid` | INTEGER FK → stocks | |
+| `fact_type` | TEXT | `geographic_revenue` or `customer_concentration` |
+| `period` | TEXT | Fiscal year, e.g. `2023` |
+| `value_json` | TEXT | JSON blob — shape varies by fact_type (see below) |
+| `fetched_at` | TEXT | |
+
+`value_json` shapes:
+- `geographic_revenue`: `{"US": 0.42, "China": 0.19, "Europe": 0.27, "Other": 0.12}`
+- `customer_concentration`: `[{"name": "Apple Inc.", "pct": 0.18, "segment": "Products"}]`
+
+```python
+# Stocks with >15% China revenue exposure:
+db.get_stocks_by_china_exposure(0.15)
+
+# All geographic facts for a stock:
+db.get_edgar_facts(stock_uid, 'geographic_revenue')
+```
 
 ---
 

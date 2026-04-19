@@ -4,7 +4,7 @@
 StackScreener/
 ├── src/
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, provider names, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (13 tables, 2 indexes)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (14 tables, 2 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
@@ -12,6 +12,7 @@ StackScreener/
 │   ├── screener_run.py                   ← scan runner / CLI entry point                      [NEXT]
 │   ├── screener_post_processing.py       ← normalized scoring output                          [PLANNED]
 │   ├── supply_chain.py                   ← Tier 2 curated seed + Tier 1 sector matching       [PARTIAL]
+│   ├── edgar.py                          ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch)   [PARTIAL]
 │   ├── inst_flow.py                      ← congressional trades + SEC insider/13F ingestion   [PLANNED]
 │   ├── app.py                            ← desktop TUI entry point (Textual)                  [PLANNED]
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                [PLANNED]
@@ -30,7 +31,8 @@ StackScreener/
 │   ├── calendar_events.sql               ← earnings, splits, IPOs, economic events
 │   ├── source_signals.sql                ← signals from congressional trades, SEC filings, Yahoo, options flow
 │   ├── research_reports.sql             ← long-form research content tagged by type
-│   └── price_history.sql               ← daily OHLCV bars + dividends + split factors
+│   ├── price_history.sql               ← daily OHLCV bars + dividends + split factors
+│   └── edgar_facts.sql                 ← XBRL geographic revenue + customer concentration
 ├── man/
 │   └── enricher.1                        ← man page for enricher CLI (install to /usr/share/man/man1/)
 ├── Mock_up/
@@ -92,6 +94,9 @@ Tables must be created in this order (FK dependencies):
 | `python src/supply_chain.py --seed-tier2` | Seed curated Tier 2 supply chain relationships |
 | `python src/supply_chain.py --list-events` | List all supply chain events in the database |
 | `python src/supply_chain.py --candidates N` | Print Tier 1 sector candidates for event N |
+| `python src/edgar.py --seed-ciks` | Map all tickers to SEC CIKs (run once) |
+| `python src/edgar.py --fetch-facts` | Pull XBRL geographic revenue + customer concentration |
+| `python src/edgar.py --china-exposure 0.15` | Print stocks with >15% China revenue |
 | `python src/screener_run.py` | Run a full scan (once scoring engine is built) |
 
 ## Data Sources (Free — No Paid API Keys Required)
