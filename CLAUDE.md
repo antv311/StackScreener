@@ -77,11 +77,21 @@ Each file owns exactly one concern. Do not cross these boundaries.
 - Always use parameterized queries — never f-string or format SQL
 - Staleness tracked via `last_enriched_at` on `stocks` — enricher checks this
 - All status/type string values come from constants in `screener_config.py`
+- Always scope stock queries to active stocks with `AND delisted = 0` unless explicitly including delisted; use `db.get_pending_enrichment()` / `db.get_pending_history()` rather than rebuilding those filters inline
+- Use `if param is not None:` not `if param:` when conditionally appending to a query — `0` and empty string are valid parameter values
+- New query helpers that filter or paginate the stocks table belong in `db.py`, not in the calling module
+- Migrations go in `_migrate_db()` in `db.py` — one `ALTER TABLE` per new column, wrapped in try/except OperationalError
 
 Watchlist query pattern (canonical):
 ```python
 db.get_watchlist_stocks(watchlist_uid)
 # → SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1
+```
+
+Pending enrichment pattern (canonical):
+```python
+db.get_pending_enrichment(limit, skip_delisted=True)
+db.get_pending_history(limit, skip_delisted=True)
 ```
 
 ---
@@ -163,11 +173,15 @@ stackscreener.db
 
 1. Check `ROADMAP.md` — confirm it's in scope for the current phase
 2. Config/constants → `screener_config.py`
-3. DB changes → `db.py` (update `init_db()` + add helpers; update `sql_tables/` to match)
+3. DB changes → `db.py`:
+   - Add column to `init_db()` CREATE TABLE
+   - Add migration to `_migrate_db()` (ALTER TABLE, catches OperationalError)
+   - Update matching file in `sql_tables/`
+   - Update `DATABASE.md`
 4. Encryption/auth changes → `crypto.py` only
 5. Business logic → appropriate module (`screener.py`, `supply_chain.py`, etc.)
 6. UI changes → `app.py` only
-7. Update `CONTEXT.md` if the architecture or file structure changes
+7. Update `CONTEXT.md` and `tree.md` if the architecture or file structure changes
 
 ---
 

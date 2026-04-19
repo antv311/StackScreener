@@ -1,6 +1,6 @@
 # StackScreener — Development Roadmap
 
-**Current Status:** Phase 0 backend foundation complete. Next: scoring engine.
+**Current Status:** Phase 0 complete. Database fully seeded and enriched. Next: scoring engine.
 **Last updated:** April 2026
 
 ---
@@ -13,27 +13,18 @@ is a real product. A half-finished web app is a liability.
 
 ---
 
-## Phase 0 — Environment & Foundation 🔄 IN PROGRESS
+## Phase 0 — Environment & Foundation ✅ COMPLETE
 
-Get a clean, working Python 3.14 environment with all dependencies resolved.
-
-- [ ] Create `venv_ss` on Python 3.14.2
-- [ ] Compile C extensions from source (numpy, pandas, matplotlib, psutil)
-- [ ] Install pure-Python deps via `requirements.txt`
-- [ ] Verify `pandas-ta` installed with `--no-deps` (no numba)
-- [ ] Confirm `CurrencyConverter` in place of `forex-python`
-- [ ] Confirm `fpdf2` in place of old fpdf
+- [x] Python 3.14.2 venv at `venv/`, C extensions compiled, all deps installed
 - [x] `screener_config.py` — all constants, weights, thresholds, status strings, provider names
-- [x] `db.py` — full SQLite layer: 12 tables, CRUD helpers, upsert builders, batch ops
+- [x] `db.py` — full SQLite layer: 13 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
 - [x] `crypto.py` — Fernet encryption via OS keyring + PBKDF2 password hashing
-- [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch via Yahoo screener
-- [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check
-- [ ] Run `python src/seeder.py --schema-only` to verify schema creates clean
-- [ ] Run `python src/seeder.py --limit 20` to verify ticker fetch works
-- [ ] Run `python src/enricher.py --limit 10` to verify enrichment works
-- [ ] Confirm a full scan runs end-to-end without errors  ← blocked on screener.py
+- [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch (6,924 stocks)
+- [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check + 5y price history
+- [x] Full database seeded and enriched — 6,910 stocks with fundamentals + price history
+- [ ] `screener.py` + `screener_run.py` — scoring engine + CLI entry point  ← **NEXT**
 
-**Exit criteria:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV + PDF.
+**Exit criteria:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV.
 
 ---
 
@@ -59,7 +50,7 @@ Turn the screener into a usable standalone desktop application matching the agre
 - [ ] **Screener** — filterable/sortable table; filters: Exchange, Sector, Market Cap, P/E, Signal
 - [ ] **Calendar** — weekly grid with color-coded event chips (Earnings / Splits / IPOs / Economic)
 - [ ] **Stock Comparison** — side-by-side up to 4 stocks; Valuation, Price Performance, Income
-- [ ] **Stock Picks** — collapsible cards scored across Unusual Whales, Quiver Quant, Yahoo, Motley Fool
+- [ ] **Stock Picks** — collapsible cards scored across Senate/House Stock Watcher, SEC EDGAR (Form 4/13F), Yahoo Finance, options flow
 - [ ] **Research Reports** — long-form cards tagged by type (Supply Chain / Fundamentals / Inst. Flow)
 
 ### 1d — Logistics Screen
@@ -190,17 +181,15 @@ Migrate the desktop app to a web interface. By this point the core logic is full
 
 | Package | Purpose | Notes |
 |---|---|---|
-| `yfinance` | Price + fundamentals | Primary data source |
+| `yfinance` | Price, fundamentals, IPO calendar, options chain | Primary data source |
 | `yahooquery` | Detailed financials | Supplement to yfinance |
-| `pandas-ta` | Technical indicators | Install with `--no-deps` |
-| `fpdf2` | PDF report generation | Replaced old fpdf |
-| `CurrencyConverter` | FX conversion | Replaced forex-python |
-| `textual` | Terminal UI | Phases 1–4 |
-| `requests` | HTTP fetches | SEC EDGAR, web data |
+| `pandas-ta` | Technical indicators | Install with `--no-deps` (no numba) |
+| `fpdf2` | PDF report generation | |
+| `CurrencyConverter` | FX conversion | |
+| `textual` | Terminal UI | Phase 1 |
+| `requests` | HTTP fetches | SEC EDGAR, congressional trade APIs |
 | `cryptography` | Fernet encryption | API key storage |
 | `keyring` | OS keyring access | Fernet master key storage |
 | `sqlite3` | DB (stdlib) | No ORM needed |
-| `numpy` | Numerics | Compile from source |
-| `pandas` | DataFrames | Compile from source |
-| `matplotlib` | Charts | Compile from source |
-| `psutil` | System info | Compile from source |
+| `numpy` | Numerics | Compile from source on Windows |
+| `pandas` | DataFrames | Compile from source on Windows |
