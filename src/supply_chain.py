@@ -25,10 +25,10 @@ import db
 from screener_config import (
     DEBUG_MODE,
     CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
-    EVENT_TYPE_CONFLICT, EVENT_TYPE_SANCTIONS,
+    EVENT_TYPE_CONFLICT, EVENT_TYPE_SANCTIONS, EVENT_TYPE_WEATHER,
     EVENT_STATUS_ACTIVE, EVENT_STATUS_MONITORING,
     ROLE_IMPACTED, ROLE_BENEFICIARY,
-    SEVERITY_HIGH,
+    SEVERITY_HIGH, SEVERITY_MEDIUM,
 )
 
 
@@ -267,6 +267,243 @@ _TIER2_SEEDS: list[dict] = [
                 "will_redirect":  "US domestic and allied fab inspection contracts",
                 "impact_notes":   "KLA China revenue ~30%; export restrictions on advanced inspection and metrology tools",
                 "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
+    # ── Gulf Coast Hurricane — Energy Infrastructure ───────────────────────────
+    {
+        "event": {
+            "title":               "Gulf Coast Hurricane Energy Disruption",
+            "region":              "Gulf of Mexico",
+            "event_type":          EVENT_TYPE_WEATHER,
+            "description":         (
+                "Major hurricane making landfall on the US Gulf Coast forces shutdown of "
+                "offshore oil platforms and coastal refineries. The Gulf Coast hosts ~45% "
+                "of US refining capacity and significant LNG export infrastructure. "
+                "Recovery typically takes 2-6 weeks depending on storm severity."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            27.0,
+            "longitude":           -90.0,
+            "country_code":        "US",
+            "trade_route":         None,
+            "commodity":           "crude oil, natural gas, LNG",
+            "affected_sectors":    json.dumps(["Energy"]),
+            "affected_industries": json.dumps(["Oil & Gas Refining & Marketing", "Oil & Gas Storage & Transportation"]),
+            "beneficiary_sectors": json.dumps(["Energy"]),
+            "event_date":          "2024-06-01",
+        },
+        "links": [
+            {
+                "ticker":         "VLO",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Gulf Coast refinery output during storm shutdown and recovery",
+                "will_redirect":  "Midwest and West Coast refinery capacity absorbs some displaced demand",
+                "impact_notes":   "Valero largest US refiner by capacity; heavy Gulf Coast concentration in Port Arthur, Corpus Christi, Texas City",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "MPC",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Galveston Bay and Gulf Coast refinery throughput",
+                "will_redirect":  "Midwest PADD 2 refinery network partially offsets",
+                "impact_notes":   "Marathon Petroleum Texas City and Garyville (Louisiana) refineries vulnerable to Gulf storms",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "PSX",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Lake Charles and Sweeny refinery output",
+                "will_redirect":  "East Coast and West Coast refinery network",
+                "impact_notes":   "Phillips 66 significant Gulf Coast refining and NGL fractionation exposure",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "LNG",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Sabine Pass LNG export terminal throughput",
+                "will_redirect":  "European buyers divert to spot market; global LNG prices spike",
+                "impact_notes":   "Cheniere Energy Sabine Pass (Louisiana) is largest US LNG export facility; direct storm exposure",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "DVN",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Devon upstream crude production benefits from refinery-driven price spike",
+                "impact_notes":   "Inland upstream producers benefit when Gulf Coast refinery shutdowns tighten crude spreads",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "COP",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "ConocoPhillips diversified upstream benefits from crude price spike post-storm",
+                "impact_notes":   "Large diversified upstream producer; historically benefits from Gulf Coast supply shocks",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── US Midwest Drought — Agricultural Supply Chain ─────────────────────────
+    {
+        "event": {
+            "title":               "US Midwest Drought Agricultural Disruption",
+            "region":              "North America",
+            "event_type":          EVENT_TYPE_WEATHER,
+            "description":         (
+                "Severe drought across the US Corn Belt reduces corn and soybean yields, "
+                "driving commodity prices sharply higher. The Midwest produces ~35% of "
+                "global corn and ~35% of global soybeans. Drought also lowers Mississippi "
+                "River levels, disrupting barge transportation of grain to Gulf export terminals."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            41.5,
+            "longitude":           -93.0,
+            "country_code":        "US",
+            "trade_route":         None,
+            "commodity":           "corn, soybeans, grain",
+            "affected_sectors":    json.dumps(["Consumer Staples", "Industrials"]),
+            "affected_industries": json.dumps(["Agricultural Products & Services", "Packaged Foods & Meats"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2024-06-01",
+        },
+        "links": [
+            {
+                "ticker":         "ADM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "corn and soybean processing volumes at Corn Belt facilities",
+                "will_redirect":  "South American sourcing (Brazil, Argentina) at higher cost",
+                "impact_notes":   "Archer-Daniels-Midland largest US grain processor; Corn Belt drought directly compresses crush margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "BG",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "US grain origination and export volumes through Gulf terminals",
+                "will_redirect":  "Brazilian and Argentine origination fills gap at higher logistics cost",
+                "impact_notes":   "Bunge Global major US grain exporter; Mississippi River low water levels compound disruption",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "TSN",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "cost-competitive poultry, beef, and pork protein at prior feed costs",
+                "will_redirect":  "Pass input cost increases to retail pricing; some production idling",
+                "impact_notes":   "Tyson Foods feed costs (corn, soybean meal) are largest input; drought-driven grain price spike compresses margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GIS",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "stable input cost base for grain-dependent packaged food production",
+                "will_redirect":  "Hedged positions partially offset; longer-term contract renegotiation",
+                "impact_notes":   "General Mills corn and wheat input exposure across cereal, snacks, baking segments",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "MOS",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Drought triggers aggressive replanting next season; fertilizer demand spikes",
+                "impact_notes":   "Mosaic (potash, phosphate) historically sees order acceleration after major drought years as farmers maximize next-season yield",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NTR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Nutrien retail ag network benefits from post-drought replanting demand surge",
+                "impact_notes":   "Nutrien largest global potash producer and largest North American ag retail network; benefits from recovery season",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "DE",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Deere precision ag equipment demand rises as farmers invest in drought-resilient infrastructure",
+                "impact_notes":   "John Deere historically sees equipment order strength following drought years as government programs fund farm recovery",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Pacific Rim Earthquake — Auto & Electronics Manufacturing ──────────────
+    {
+        "event": {
+            "title":               "Pacific Rim Earthquake Manufacturing Disruption",
+            "region":              "East Asia",
+            "event_type":          EVENT_TYPE_WEATHER,
+            "description":         (
+                "Major earthquake in Japan or Taiwan disrupts auto parts and electronics "
+                "component manufacturing. Japan supplies ~40% of global auto parts by value "
+                "and is the dominant producer of specialty chemicals, bearings, and electronic "
+                "components. A magnitude 7+ event can halt production for weeks and trigger "
+                "cascading shortages across global auto and consumer electronics supply chains."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            35.7,
+            "longitude":           139.7,
+            "country_code":        "JP",
+            "trade_route":         None,
+            "commodity":           "auto parts, electronic components, specialty chemicals",
+            "affected_sectors":    json.dumps(["Consumer Discretionary", "Technology", "Industrials"]),
+            "affected_industries": json.dumps(["Automobile Manufacturers", "Auto Parts & Equipment", "Electronic Components"]),
+            "beneficiary_sectors": json.dumps(["Consumer Discretionary"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "TM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal vehicle production volumes; domestic and export assembly lines halt",
+                "will_redirect":  "North American and European plants operate on existing inventory buffer",
+                "impact_notes":   "Toyota Japan domestic production accounts for ~40% of global output; just-in-time supply chain highly vulnerable",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "HMC",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Japan-sourced powertrain components and assembly output",
+                "will_redirect":  "Ohio and Alabama US plants continue on stockpiled parts",
+                "impact_notes":   "Honda Japan operations supply critical powertrain and electronics components to global assembly network",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "vehicles requiring Japan-sourced electronic control units and specialty components",
+                "will_redirect":  "Domestic US sourcing where available; production resequencing",
+                "impact_notes":   "Ford relies on Japanese suppliers for sensors, ECUs, and specialty steel; 2011 Tohoku earthquake precedent",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "full vehicle production lines dependent on Japanese electronic components",
+                "will_redirect":  "Dual-sourcing contingency plans activated; production prioritized to highest-margin vehicles",
+                "impact_notes":   "GM Japan component exposure across EV battery management, infotainment, and transmission systems",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "MU",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Japan-based DRAM and NAND flash production from Hiroshima fab",
+                "will_redirect":  "Idaho and Virginia US fabs; Taiwan production absorbs some volume",
+                "impact_notes":   "Micron Hiroshima fab is major DRAM production site; earthquake risk is explicit in annual filings",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "STLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Jeep and Ram models requiring Japan-sourced specialty components",
+                "will_redirect":  "European and North American parts substitution where feasible",
+                "impact_notes":   "Stellantis (Jeep, Ram, Dodge, Chrysler) has concentrated Japan supplier relationships for transmissions and electronics",
+                "confidence":     CONFIDENCE_MEDIUM,
             },
         ],
     },
