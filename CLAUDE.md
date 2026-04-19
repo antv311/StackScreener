@@ -2,7 +2,8 @@
 
 This file tells Claude Code how to work on this project. Read it before making any changes.
 Always read `CONTEXT.md` first for full project context, and `ROADMAP.md` to confirm what
-phase is active before writing any code.
+phase is active before writing any code. Also please also review `tree.md` , `DATABASE.md` 
+for context and information about how everything is connected.
 
 ---
 
@@ -110,8 +111,10 @@ db.get_pending_history(limit, skip_delisted=True)
 ## Scoring & Config
 
 - All weights, thresholds, scoring constants live in `screener_config.py`
-- Score components: EV/R, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z
-- Supply chain signal score is additive on top of fundamental score (configurable weight)
+- Score components: EV/R, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z (0–100 each; None → 50 neutral)
+- `score_cfo_ratio` and `score_altman_z` return 50 until balance sheet data is seeded — do not remove these placeholders
+- Supply chain and inst flow are **additive overlays** on top of the fundamental base (max +20 pts each at default weights)
+- Scan modes: `nsr` (all active), `thematic` (event-sector filtered), `watchlist` (named list) — constants in `SCAN_MODE_*`
 - Institutional flow sources: Senate/House Stock Watcher (congressional trades), SEC EDGAR Form 4 (insider trades), SEC EDGAR Form 13F (institutional holdings), yfinance options chain — all free, no paid API keys required
 
 ---

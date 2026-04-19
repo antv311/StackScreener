@@ -4,17 +4,17 @@
 StackScreener/
 ├── src/
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, provider names, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (14 tables, 2 indexes)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (15 tables, 2 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
-│   ├── screener.py                       ← core scoring engine                                [NEXT]
-│   ├── screener_run.py                   ← scan runner / CLI entry point                      [NEXT]
+│   ├── screener.py                       ← core scoring engine (EV/R, PE, EV/EBITDA, PEG, D/E, margin, SC, flow)
+│   ├── screener_run.py                   ← scan runner / CLI entry point (nsr / thematic / watchlist + CSV)
 │   ├── screener_post_processing.py       ← normalized scoring output                          [PLANNED]
 │   ├── supply_chain.py                   ← Tier 2 curated seed + Tier 1 sector matching       [PARTIAL]
 │   ├── edgar.py                          ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch)   [PARTIAL]
 │   ├── inst_flow.py                      ← congressional trades + SEC insider/13F ingestion   [PLANNED]
-│   ├── app.py                            ← desktop TUI entry point (Textual)                  [PLANNED]
+│   ├── app.py                            ← desktop TUI entry point (Textual) — login, sidebar, screener tab
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                [PLANNED]
 │   ├── mailer.py                         ← email delivery                                     [PLANNED]
 │   └── Results/                          ← scan output (gitignored)
@@ -75,6 +75,8 @@ Tables must be created in this order (FK dependencies):
 11. source_signals              → stocks
 12. research_reports            → supply_chain_events, stocks
 13. price_history               → stocks
+14. edgar_facts                 → stocks
+15. settings                    → users
 ```
 
 ---
@@ -97,7 +99,11 @@ Tables must be created in this order (FK dependencies):
 | `python src/edgar.py --seed-ciks` | Map all tickers to SEC CIKs (run once) |
 | `python src/edgar.py --fetch-facts` | Pull XBRL geographic revenue + customer concentration |
 | `python src/edgar.py --china-exposure 0.15` | Print stocks with >15% China revenue |
-| `python src/screener_run.py` | Run a full scan (once scoring engine is built) |
+| `python src/screener_run.py` | Run a full NSR scan — scores all active stocks |
+| `python src/screener_run.py --mode thematic` | Supply-chain-aware scan (filtered universe) |
+| `python src/screener_run.py --mode watchlist --watchlist "NAME"` | Score only watchlist stocks |
+| `python src/screener_run.py --limit N --top 25` | Limit universe + show top 25 |
+| `python src/app.py` | Launch the Textual TUI desktop app |
 
 ## Data Sources (Free — No Paid API Keys Required)
 

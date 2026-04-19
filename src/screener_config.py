@@ -24,8 +24,21 @@ ALTMAN_Z_SAFE:      float = 2.99
 
 PE_MAX:             float = 50.0
 EV_REVENUE_MAX:     float = 20.0
+EV_EBITDA_MAX:      float = 30.0
 DEBT_EQUITY_MAX:    float = 2.0
 PEG_MAX:            float = 3.0
+MARGIN_MIN:         float = -0.50   # net margin floor (score = 0)
+MARGIN_MAX:         float =  0.30   # net margin ceiling (score = 100)
+
+# ── Scan Modes ────────────────────────────────────────────────────────────────
+SCAN_MODE_NSR:       str = "nsr"
+SCAN_MODE_THEMATIC:  str = "thematic"
+SCAN_MODE_WATCHLIST: str = "watchlist"
+SCAN_MODE_CUSTOM:    str = "custom"
+
+SCAN_MODES: frozenset[str] = frozenset({
+    SCAN_MODE_NSR, SCAN_MODE_THEMATIC, SCAN_MODE_WATCHLIST, SCAN_MODE_CUSTOM,
+})
 
 # ── Scan Defaults ──────────────────────────────────────────────────────────────
 SCAN_TOP_N:              int = 50

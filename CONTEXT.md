@@ -89,7 +89,8 @@ Layer 2 — Database
   SQLite via stackscreener.db    → 13 tables + 2 covering indexes (see schema below)
   API keys encrypted via Fernet, master key stored in OS keyring
   db.py helpers: get_pending_enrichment, get_pending_history, ipo_checked_today,
-                 mark_delisted, get_active_stocks (all SQL lives in db.py only)
+                 mark_delisted, get_active_stocks, get_active_event_stocks,
+                 get_active_event_sectors, get_setting, set_setting (all SQL in db.py only)
 
 Layer 3 — Data Pipeline
   seeder.py                      → one-time schema init + NYSE/NASDAQ universe seed
@@ -100,11 +101,12 @@ Layer 3 — Data Pipeline
 
 Layer 4 — Scoring Engine
   screener.py                    → EV/R, PE, EV/EBITDA, profit margin, PEG,
-                                   debt/equity, CFO ratio, Altman Z-score        [NEXT]
-  screener_run.py                → scan orchestration + CLI entry point          [NEXT]
+                                   debt/equity, supply chain + inst flow overlays
+  screener_run.py                → scan orchestration + CLI entry point
+                                   modes: nsr / thematic / watchlist; exports CSV
 
 Layer 5 — Output (Phase 1: Desktop App)
-  app.py (Textual TUI)           → interactive terminal app matching the UI design above  [PLANNED]
+  app.py (Textual TUI)           → Phase 1a complete: login, sidebar, screener tab, logistics stub
   pdf_generator.py               → CSV + PDF reports to Results/ directory                [PLANNED]
 
 Layer 6 — Output (Phase 5: Web App)
@@ -179,6 +181,8 @@ and are created by `db.init_db()`. All access goes through `db.py` only.
 | `source_signals` | Per-stock signals from congressional trades, SEC filings, Yahoo, options flow |
 | `research_reports` | Long-form research content tagged by type |
 | `price_history` | Daily OHLCV bars + dividends + split factors per stock |
+| `edgar_facts` | XBRL geographic revenue + customer concentration per stock per year |
+| `settings` | Per-user key/value preferences (theme, scan defaults, etc.) |
 
 Watchlist query pattern:
 ```sql

@@ -17,14 +17,15 @@ is a real product. A half-finished web app is a liability.
 
 - [x] Python 3.14.2 venv at `venv/`, C extensions compiled, all deps installed
 - [x] `screener_config.py` — all constants, weights, thresholds, status strings, provider names
-- [x] `db.py` — full SQLite layer: 13 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
+- [x] `db.py` — full SQLite layer: 15 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
 - [x] `crypto.py` — Fernet encryption via OS keyring + PBKDF2 password hashing
 - [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch (6,924 stocks)
 - [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check + 5y price history
 - [x] Full database seeded and enriched — 6,910 stocks with fundamentals + price history
-- [ ] `screener.py` + `screener_run.py` — scoring engine + CLI entry point  ← **NEXT**
+- [x] `screener.py` — scoring engine (EV/R, PE, EV/EBITDA, margin, PEG, D/E, supply chain, inst flow)
+- [x] `screener_run.py` — scan runner + CLI entry point (nsr / thematic / watchlist modes + CSV export)
 
-**Exit criteria:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV.
+**Exit criteria met:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV. ✅
 
 ---
 
@@ -32,13 +33,13 @@ is a real product. A half-finished web app is a liability.
 
 Turn the screener into a usable standalone desktop application matching the agreed UI mockup.
 
-### 1a — Core App Shell
+### 1a — Core App Shell ✅ COMPLETE
 
-- [ ] Create `app.py` as the Textual TUI entry point
-- [ ] Three-section sidebar: Home / Research / Logistics
-- [ ] Login screen — enforce password change for admin on first run
-- [ ] Config management: load/save user settings via `settings` table
-- [ ] Graceful error handling and user-friendly error messages
+- [x] Create `app.py` as the Textual TUI entry point
+- [x] Three-section sidebar: Home / Research / Logistics
+- [x] Login screen — enforce password change for admin on first run
+- [x] Config management: load/save user settings via `settings` table
+- [x] Graceful error handling and user-friendly error messages
 
 ### 1b — Home Screen
 

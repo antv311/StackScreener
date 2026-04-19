@@ -149,6 +149,8 @@ def init_db() -> None:
                 peg_ratio                 REAL,
                 ps_ratio                  REAL,
                 pb_ratio                  REAL,
+                ev_revenue                REAL,
+                ev_ebitda                 REAL,
                 price_to_cash             REAL,
                 price_to_fcf              REAL,
                 eps_growth_this_year      REAL,
@@ -360,6 +362,15 @@ def init_db() -> None:
                 updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS settings (
+                setting_uid  INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid     INTEGER NOT NULL REFERENCES users(user_uid),
+                key          TEXT NOT NULL,
+                value        TEXT,
+                updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_uid, key)
+            );
+
             CREATE TABLE IF NOT EXISTS price_history (
                 price_history_uid INTEGER PRIMARY KEY AUTOINCREMENT,
                 stock_uid         INTEGER NOT NULL REFERENCES stocks(stock_uid),
@@ -374,11 +385,6 @@ def init_db() -> None:
                 UNIQUE(stock_uid, date)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched
-                ON stocks (delisted, last_enriched_at);
-            CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price
-                ON stocks (delisted, price);
-
             CREATE TABLE IF NOT EXISTS edgar_facts (
                 edgar_fact_uid  INTEGER PRIMARY KEY AUTOINCREMENT,
                 stock_uid       INTEGER NOT NULL REFERENCES stocks(stock_uid),
@@ -389,8 +395,8 @@ def init_db() -> None:
                 UNIQUE(stock_uid, fact_type, period)
             );
         """)
-    _migrate_db(conn)
-    _debug("init_db complete")
+        _migrate_db(conn)
+        _debug("init_db complete")
 
 
 def _migrate_db(conn: sqlite3.Connection) -> None:
@@ -407,8 +413,19 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE stocks ADD COLUMN business_summary TEXT",
         "ALTER TABLE stocks ADD COLUMN cik TEXT",
+        "ALTER TABLE stocks ADD COLUMN ev_revenue REAL",
+        "ALTER TABLE stocks ADD COLUMN ev_ebitda REAL",
+    ]
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched ON stocks (delisted, last_enriched_at)",
+        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price ON stocks (delisted, price)",
     ]
     for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
+    for sql in index_migrations:
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
@@ -716,6 +733,27 @@ def get_stock_events(stock_uid: int) -> list[dict]:
     )
 
 
+def get_active_event_stocks() -> list[dict]:
+    """Return all event_stock links for currently active supply chain events."""
+    return query(
+        """SELECT es.stock_uid, es.role, es.confidence, sce.severity
+           FROM event_stocks es
+           JOIN supply_chain_events sce USING (supply_chain_event_uid)
+           WHERE sce.status = ?""",
+        (EVENT_STATUS_ACTIVE,),
+    )
+
+
+def get_active_event_sectors() -> list[dict]:
+    """Return sector/industry lists from all active supply chain events."""
+    return query(
+        """SELECT supply_chain_event_uid, affected_sectors, beneficiary_sectors,
+                  affected_industries, severity
+           FROM supply_chain_events WHERE status = ?""",
+        (EVENT_STATUS_ACTIVE,),
+    )
+
+
 # ── Calendar Events ────────────────────────────────────────────────────────────
 
 def upsert_calendar_event(data: dict) -> int:
@@ -756,6 +794,13 @@ def get_stock_signals(stock_uid: int) -> list[dict]:
     return query(
         "SELECT * FROM source_signals WHERE stock_uid = ? ORDER BY fetched_at DESC",
         (stock_uid,),
+    )
+
+
+def get_all_signal_scores() -> list[dict]:
+    """Return (stock_uid, sub_score) for all signals that have a sub_score."""
+    return query(
+        "SELECT stock_uid, sub_score FROM source_signals WHERE sub_score IS NOT NULL"
     )
 
 
@@ -949,6 +994,30 @@ def get_stocks_by_china_exposure(min_pct: float = 0.10) -> list[dict]:
         """,
         (min_pct,),
     )
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+def get_setting(user_uid: int, key: str, default: str | None = None) -> str | None:
+    row = query_one(
+        "SELECT value FROM settings WHERE user_uid = ? AND key = ?",
+        (user_uid, key),
+    )
+    return row["value"] if row else default
+
+
+def set_setting(user_uid: int, key: str, value: str) -> None:
+    execute(
+        """INSERT INTO settings (user_uid, key, value) VALUES (?, ?, ?)
+           ON CONFLICT(user_uid, key) DO UPDATE SET
+               value = excluded.value, updated_at = datetime('now')""",
+        (user_uid, key, value),
+    )
+
+
+def get_all_settings(user_uid: int) -> dict[str, str | None]:
+    rows = query("SELECT key, value FROM settings WHERE user_uid = ?", (user_uid,))
+    return {r["key"]: r["value"] for r in rows}
 
 
 # ── Price History ──────────────────────────────────────────────────────────────

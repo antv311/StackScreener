@@ -73,6 +73,8 @@ def _map_info(ticker: str, exchange: str, info: dict) -> dict:
         "peg_ratio":            info.get("trailingPegRatio"),
         "ps_ratio":             info.get("priceToSalesTrailing12Months"),
         "pb_ratio":             info.get("priceToBook"),
+        "ev_revenue":           info.get("enterpriseToRevenue"),
+        "ev_ebitda":            info.get("enterpriseToEbitda"),
         "return_on_assets":     info.get("returnOnAssets"),
         "return_on_equity":     info.get("returnOnEquity"),
         "gross_margin":         info.get("grossMargins"),
