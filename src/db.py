@@ -433,8 +433,14 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN company_name TEXT",
     ]
     index_migrations = [
-        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched ON stocks (delisted, last_enriched_at)",
-        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price ON stocks (delisted, price)",
+        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched   ON stocks (delisted, last_enriched_at)",
+        "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_price       ON stocks (delisted, price)",
+        "CREATE INDEX IF NOT EXISTS idx_edgar_facts_stock_type      ON edgar_facts (stock_uid, fact_type)",
+        "CREATE INDEX IF NOT EXISTS idx_edgar_facts_type_fetched    ON edgar_facts (fact_type, fetched_at)",
+        "CREATE INDEX IF NOT EXISTS idx_source_signals_stock        ON source_signals (stock_uid)",
+        "CREATE INDEX IF NOT EXISTS idx_sce_status                  ON supply_chain_events (status)",
+        "CREATE INDEX IF NOT EXISTS idx_scan_results_scan_rank      ON scan_results (scan_uid, composite_rank)",
+        "CREATE INDEX IF NOT EXISTS idx_news_articles_source_pub    ON news_articles (source, published_at DESC)",
     ]
     for sql in migrations:
         try:
@@ -656,6 +662,24 @@ def insert_scan_result(data: dict) -> int:
     return execute(sql, params)
 
 
+_SCAN_RESULT_COLS = (
+    "stock_uid", "scan_uid", "composite_score", "composite_rank",
+    "score_ev_revenue", "score_pe", "score_ev_ebitda", "score_profit_margin",
+    "score_peg", "score_debt_equity", "score_cfo_ratio", "score_altman_z",
+    "score_supply_chain", "score_inst_flow", "price_at_scan", "market_cap_at_scan",
+)
+_SCAN_RESULT_SQL = (
+    f"INSERT INTO scan_results ({', '.join(_SCAN_RESULT_COLS)}) "
+    f"VALUES ({', '.join('?' * len(_SCAN_RESULT_COLS))})"
+)
+
+
+def insert_scan_results_batch(rows: list[dict]) -> None:
+    """Insert all scan result rows in a single transaction."""
+    params_list = [tuple(r.get(c) for c in _SCAN_RESULT_COLS) for r in rows]
+    executemany(_SCAN_RESULT_SQL, params_list)
+
+
 def get_scan_results(scan_uid: int, limit: int | None = None) -> list[dict]:
     sql = """
         SELECT sr.*, s.ticker, s.exchange, s.sector, s.industry
@@ -752,7 +776,7 @@ def get_stock_events(stock_uid: int) -> list[dict]:
 def get_active_event_stocks() -> list[dict]:
     """Return all event_stock links for currently active supply chain events."""
     return query(
-        """SELECT es.stock_uid, es.role, es.confidence, sce.severity
+        """SELECT es.stock_uid, es.role, es.confidence, sce.severity, sce.title
            FROM event_stocks es
            JOIN supply_chain_events sce USING (supply_chain_event_uid)
            WHERE sce.status = ?""",
@@ -994,11 +1018,14 @@ def remove_portfolio_position(user_uid: int, stock_uid: int) -> None:
 
 def upsert_edgar_fact(data: dict) -> int:
     """Insert or update an EDGAR fact keyed on (stock_uid, fact_type, period)."""
+    if "fetched_at" not in data:
+        from datetime import datetime as _dt
+        data = {**data, "fetched_at": _dt.now().strftime("%Y-%m-%d %H:%M:%S")}
     sql, params = _build_upsert_sql(
         "edgar_facts", data,
         ("stock_uid", "fact_type", "period"),
         pk="edgar_fact_uid",
-        refresh_timestamp=True,
+        refresh_timestamp=False,
     )
     return execute(sql, params)
 
@@ -1029,6 +1056,42 @@ def get_stocks_by_china_exposure(min_pct: float = 0.10) -> list[dict]:
         """,
         (min_pct,),
     )
+
+
+def get_active_china_events() -> list[dict]:
+    """Return active supply chain events that are China- or Taiwan-related."""
+    return query(
+        """
+        SELECT supply_chain_event_uid, title, region, severity
+        FROM supply_chain_events
+        WHERE status = 'active'
+          AND (country_code = 'CN'
+               OR region LIKE '%China%'
+               OR region LIKE '%Taiwan%')
+        """
+    )
+
+
+def get_china_revenue_map() -> dict[int, float]:
+    """Return {stock_uid: china_pct} for all stocks with EDGAR geographic data.
+
+    Uses the most recent period. Only includes stocks where China revenue > 0.
+    """
+    rows = query(
+        """
+        SELECT ef.stock_uid,
+               CAST(json_extract(ef.value_json, '$.China') AS REAL) AS china_pct
+        FROM edgar_facts ef
+        WHERE ef.fact_type = 'geographic_revenue'
+          AND ef.period = (
+              SELECT MAX(ef2.period) FROM edgar_facts ef2
+              WHERE ef2.stock_uid = ef.stock_uid
+                AND ef2.fact_type = 'geographic_revenue'
+          )
+          AND CAST(json_extract(ef.value_json, '$.China') AS REAL) > 0
+        """
+    )
+    return {r["stock_uid"]: float(r["china_pct"]) for r in rows}
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
@@ -1106,12 +1169,16 @@ def upsert_news_article(data: dict) -> int:
 
 
 def get_news_articles(source: str | None = None, limit: int = 50) -> list[dict]:
-    sql = "SELECT * FROM news_articles"
+    sql = """
+        SELECT na.*, s.ticker
+        FROM news_articles na
+        LEFT JOIN stocks s ON s.stock_uid = na.stock_uid
+    """
     params: tuple = ()
     if source is not None:
-        sql += " WHERE source = ?"
+        sql += " WHERE na.source = ?"
         params = (source,)
-    return query(sql + " ORDER BY published_at DESC LIMIT ?", params + (limit,))
+    return query(sql + " ORDER BY na.published_at DESC LIMIT ?", params + (limit,))
 
 
 def get_news_articles_for_stock(stock_uid: int, limit: int = 20) -> list[dict]:

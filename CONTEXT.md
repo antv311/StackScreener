@@ -78,15 +78,15 @@ Layer 1 — Data Sources
   yahooquery                     → detailed financials (supplement)
   Yahoo Finance Screener API     → full NYSE/NASDAQ universe enumeration
   Yahoo Finance Calendar API     → upcoming IPOs (daily check)
-  Senate Stock Watcher API       → congressional trades (Senate) — free, no key   [PLANNED]
-  House Stock Watcher API        → congressional trades (House) — free, no key     [PLANNED]
-  SEC EDGAR (Form 4)             → insider trades — free, public                   [PLANNED]
-  SEC EDGAR (Form 13F)           → institutional holdings — free, public           [PLANNED]
-  yfinance options chain         → basic options flow — free                       [PLANNED]
+  Senate Stock Watcher API       → congressional trades (Senate) — free, no key   [PARTIAL — inst_flow.py built]
+  House Stock Watcher API        → congressional trades (House) — free, no key     [PARTIAL — inst_flow.py built]
+  SEC EDGAR (Form 4)             → insider trades — free, public                   [PLANNED Phase 3]
+  SEC EDGAR (Form 13F)           → institutional holdings — free, public           [PLANNED Phase 3]
+  yfinance options chain         → basic options flow — free                       [PLANNED Phase 3]
   worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
-  SQLite via stackscreener.db    → 16 tables + 2 covering indexes (see schema below)
+  SQLite via stackscreener.db    → 16 tables + 8 covering indexes (see schema below)
   API keys encrypted via Fernet, master key stored in OS keyring
   db.py helpers: get_pending_enrichment, get_pending_history, ipo_checked_today,
                  mark_delisted, get_active_stocks, get_active_event_stocks,
@@ -107,10 +107,11 @@ Layer 4 — Scoring Engine
 
 Layer 5 — Output (Phase 1: Desktop App)
   app.py (Textual TUI)           → Phase 1a + 1c complete: login, sidebar, all Research tabs
-                                   (Screener, Calendar, Stock Comparison, Stock Picks, Research Reports)
+                                   (Screener, Calendar, Stock Comparison, Stock Picks, Research Reports, News)
                                    Home and Logistics panels are stubs pending Phase 1b/1d
   news.py                        → podcast RSS + Whisper transcription + WSJ PDF + Yahoo Finance
                                    news_articles table (16th); ticker signals → source_signals
+                                   All 7 RSS feeds verified live (April 2026)
   pdf_generator.py               → CSV + PDF reports to Results/ directory                [PLANNED]
 
 Layer 6 — Output (Phase 5: Web App)
@@ -133,11 +134,11 @@ StackScreener/
 │   ├── screener.py                 ← core scoring engine (8 components + SC/flow overlays)
 │   ├── screener_run.py             ← scan runner / CLI entry point (nsr/thematic/watchlist + CSV)
 │   ├── screener_post_processing.py ← normalized scoring output                  [PLANNED]
-│   ├── supply_chain.py             ← Tier 2 curated seed + Tier 1 sector matching [PARTIAL]
-│   ├── edgar.py                    ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch) [PARTIAL]
-│   ├── inst_flow.py                ← congressional trades + SEC insider/13F ingestion [PLANNED]
-│   ├── news.py                     ← podcasts (WSJ/MS/MF) + WSJ PDF + Yahoo Finance news [PARTIAL]
-│   ├── app.py                      ← desktop TUI (Textual) — Phase 1a+1c complete
+│   ├── supply_chain.py             ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
+│   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + customer %
+│   ├── inst_flow.py                ← congressional trades (Senate + House Stock Watcher) [PARTIAL — Phase 3]
+│   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── app.py                      ← desktop TUI (Textual) — login, sidebar, all Research tabs incl. News
 │   ├── pdf_generator.py            ← PDF reports (fpdf2)                        [PLANNED]
 │   ├── mailer.py                   ← email delivery                             [PLANNED]
 │   └── Results/                    ← scan output (gitignored)

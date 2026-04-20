@@ -4,18 +4,18 @@
 StackScreener/
 ├── src/
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, provider names, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (16 tables, 2 indexes)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (16 tables, 8 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
 │   ├── screener.py                       ← core scoring engine (EV/R, PE, EV/EBITDA, PEG, D/E, margin, SC, flow)
-│   ├── screener_run.py                   ← scan runner / CLI entry point (nsr / thematic / watchlist + CSV)
+│   ├── screener_run.py                   ← scan runner / CLI (nsr / thematic / watchlist + CSV + event context output)
 │   ├── screener_post_processing.py       ← normalized scoring output                          [PLANNED]
-│   ├── supply_chain.py                   ← Tier 2 curated seed + Tier 1 sector matching       [PARTIAL]
-│   ├── edgar.py                          ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch)   [PARTIAL]
-│   ├── inst_flow.py                      ← congressional trades + SEC insider/13F ingestion   [PLANNED]
-│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo  [PARTIAL]
-│   ├── app.py                            ← desktop TUI (Textual) — Phase 1a+1c complete: login, sidebar, all Research tabs
+│   ├── supply_chain.py                   ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
+│   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
+│   ├── inst_flow.py                      ← congressional trades (Senate + House Stock Watcher) [PARTIAL — Phase 3]
+│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── app.py                            ← desktop TUI (Textual) — login, sidebar, all Research tabs incl. News
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                [PLANNED]
 │   ├── mailer.py                         ← email delivery                                     [PLANNED]
 │   ├── Results/                          ← scan output (gitignored)

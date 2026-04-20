@@ -23,10 +23,10 @@ Signal layers in the composite score:
 |---|---|---|
 | **EV/Revenue, P/E, EV/EBITDA, Margin, PEG, D/E** | yfinance fundamentals | ✅ Live |
 | **Supply chain signal** | Curated event → sector mapping (Tier 2) | ✅ Live |
-| **EDGAR geographic revenue** | SEC XBRL API — China/US/Europe exposure | ✅ Live |
-| **Congressional trades** | Senate/House Stock Watcher (free APIs) | Planned Phase 3 |
+| **EDGAR geographic revenue** | SEC XBRL — China/US/Europe exposure + 10-K risk flags | ✅ Live |
+| **News aggregation** | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Live |
+| **Congressional trades** | Senate/House Stock Watcher (free APIs) | ✅ Built — Phase 3 wiring |
 | **SEC insider filings** | EDGAR Form 4 + 13F (free) | Planned Phase 3 |
-| **News aggregation** | Reuters RSS, Yahoo Finance, WSJ PDF | Planned Phase 2d |
 
 ---
 
@@ -37,7 +37,7 @@ Three-section desktop TUI built with [Textual](https://github.com/Textualize/tex
 | Section | What's Here |
 |---|---|
 | **Home** | Live database stats + last scan summary (heatmap in Phase 1b) |
-| **Research** | Screener · Calendar · Stock Comparison · Stock Picks · Research Reports |
+| **Research** | Screener · Calendar · Stock Comparison · Stock Picks · Research Reports · News |
 | **Logistics** | Active supply chain events table (interactive world map in Phase 1d) |
 
 Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up/).
@@ -61,18 +61,19 @@ Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up
 
 ## Project Status
 
-**Phase 0 complete. Phase 1a and 1c complete.**
+**Phase 0, 1a, 1c, and most of Phase 2 complete.**
 
 | Phase | Status | What it covers |
 |---|---|---|
-| Phase 0 — Foundation | ✅ Complete | DB (16 tables), enricher, seeder, scoring engine, scan runner |
+| Phase 0 — Foundation | ✅ Complete | DB (16 tables, 8 indexes), enricher, seeder, scoring engine, scan runner |
 | Phase 1a — App Shell | ✅ Complete | Textual TUI, login, sidebar navigation, settings table |
+| Phase 1c — Research Tabs | ✅ Complete | Screener, Calendar, Comparison, Stock Picks, Research Reports, News |
+| Phase 2b — EDGAR Pipeline | ✅ Complete | CIK seed, XBRL facts, 10-K risk flags; China exposure wired into scoring |
+| Phase 2d — News Aggregation | ✅ Complete | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance; News tab in app |
+| Phase 2f — Thematic Scan | ✅ Complete | Disruption-filtered universe + SC scoring + event context output |
 | Phase 1b — Home Screen | 🔲 Next | Market heatmap, index selector |
-| Phase 2d — News Aggregation | 🔶 Partial | WSJ/MS/MF podcasts + WSJ PDF + Yahoo Finance |
-| Phase 1c — Research Tabs | ✅ Complete | Screener, Calendar, Comparison, Stock Picks, Research Reports |
 | Phase 1d — Logistics | 🔲 Planned | Interactive world map with disruption pins |
-| Phase 2 — Supply Chain Engine | 🔲 Planned | EDGAR LLM, news aggregation, thematic scoring |
-| Phase 3 — Institutional Flow | 🔲 Planned | Congressional trades, insider filings, options flow |
+| Phase 3 — Institutional Flow | 🔲 Planned | Form 4 insider trades, 13F holdings, options flow |
 
 See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 

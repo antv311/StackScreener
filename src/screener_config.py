@@ -100,11 +100,21 @@ ROLE_IMPACTED:    str = "impacted"
 ROLE_BENEFICIARY: str = "beneficiary"
 
 # ── EDGAR ──────────────────────────────────────────────────────────────────────
-EDGAR_RATE_LIMIT:     float = 0.11  # seconds between requests; SEC allows 10 req/s
-EDGAR_STALENESS_DAYS: int   = 90    # re-fetch XBRL facts quarterly
+EDGAR_RATE_LIMIT:        float = 0.11  # seconds between requests; SEC allows 10 req/s
+EDGAR_STALENESS_DAYS:    int   = 90    # re-fetch XBRL facts quarterly
+EDGAR_FILING_STALENESS:  int   = 180  # re-fetch 10-K text twice a year
+# Identity string sent to SEC EDGAR in the User-Agent header (required by SEC fair-use policy)
+EDGAR_IDENTITY:          str   = "StackScreener antv311@gmail.com"
 
 FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
 FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"
+FACT_RISK_FLAGS:             str = "risk_flags"        # boolean supply-chain risk indicators
+FACT_FILING_CUSTOMERS:       str = "filing_customers"  # customer % mentions from 10-K text
+
+# ── External Tools ────────────────────────────────────────────────────────────
+# Absolute path to the directory containing ffmpeg.exe — prepended to PATH at
+# runtime so Whisper can find it. Set to "" to rely on system PATH as-is.
+FFMPEG_BIN_DIR: str = r"C:\tools\ffmpeg\bin"
 
 # ── News Aggregation ───────────────────────────────────────────────────────────
 NEWS_AUDIO_DIR:      str = "src/News/audio"   # temp MP3 storage — deleted after transcription
@@ -123,14 +133,26 @@ NEWS_SOURCE_YAHOO_FINANCE:  str = "yahoo_finance_news"
 NEWS_SIGNAL_TRANSCRIPT_MENTION: str = "transcript_mention"
 NEWS_SIGNAL_NEWS_HEADLINE:      str = "news_headline"
 
-# Podcast RSS feeds — verify these against each show's current feed before first run.
-# To find a feed: open the show in Apple Podcasts → share → copy RSS link.
-WSJ_PODCAST_FEEDS: list[str] = [
-    "https://feeds.simplecast.com/qm_9xx0g",  # The Journal (WSJ)
-    "https://feeds.simplecast.com/7HRHEbex",  # What's News (WSJ)
+# Podcast RSS feeds — URLs verified via iTunes API (April 2026).
+# PODCAST_FEEDS is the canonical list used by fetch_all_podcasts().
+# Each entry: (source_name, rss_url)
+PODCAST_FEEDS: list[tuple[str, str]] = [
+    (NEWS_SOURCE_WSJ_PODCAST,    "https://video-api.wsj.com/podcast/rss/wsj/minute-briefing"),
+    (NEWS_SOURCE_WSJ_PODCAST,    "https://video-api.wsj.com/podcast/rss/wsj/tech-news-briefing"),
+    (NEWS_SOURCE_WSJ_PODCAST,    "https://video-api.wsj.com/podcast/rss/wsj/whats-news"),
+    (NEWS_SOURCE_WSJ_PODCAST,    "https://video-api.wsj.com/podcast/rss/wsj/your-money-matters"),
+    (NEWS_SOURCE_MORGAN_STANLEY, "https://rss.art19.com/thoughts-on-the-market"),
+    (NEWS_SOURCE_MOTLEY_FOOL,    "https://feeds.megaphone.fm/ARML8165884693"),   # Motley Fool Money
+    (NEWS_SOURCE_MOTLEY_FOOL,    "https://feeds.megaphone.fm/ARML2428817190"),   # Rule Breaker Investing
 ]
-MORGAN_STANLEY_PODCAST_FEED: str = "https://feeds.megaphone.fm/MSFS8299469162"  # Thoughts on the Market
-MOTLEY_FOOL_PODCAST_FEED:    str = "https://feeds.megaphone.fm/foolmoneypodcast"  # Motley Fool Money
+
+# Legacy single-feed constants kept for backwards compat with the Settings panel.
+WSJ_PODCAST_FEEDS: list[str] = [
+    "https://video-api.wsj.com/podcast/rss/wsj/whats-news",
+    "https://video-api.wsj.com/podcast/rss/wsj/minute-briefing",
+]
+MORGAN_STANLEY_PODCAST_FEED: str = "https://rss.art19.com/thoughts-on-the-market"
+MOTLEY_FOOL_PODCAST_FEED:    str = "https://feeds.megaphone.fm/ARML8165884693"
 
 # ── Attribution ────────────────────────────────────────────────────────────────
 DEFAULT_AUTHOR: str = "StackScreener"
@@ -140,3 +162,33 @@ PROVIDER_FINVIZ:          str = "finviz"
 PROVIDER_UNUSUAL_WHALES:  str = "unusual_whales"
 PROVIDER_QUIVER_QUANT:    str = "quiver_quant"
 PROVIDER_PLAID:           str = "plaid"
+PROVIDER_GMAIL_WSJ:       str = "gmail_wsj"   # encrypted Gmail app password for WSJ fetcher
+PROVIDER_SENATE_WATCHER:  str = "senate_watcher"
+PROVIDER_HOUSE_WATCHER:   str = "house_watcher"
+
+# ── Congressional Trades ───────────────────────────────────────────────────────
+SENATE_WATCHER_URL:   str = "https://senatestockwatcher.com/api"
+HOUSE_WATCHER_URL:    str = "https://housestockwatcher.com/api"
+CONGRESS_LOOKBACK_DAYS: int = 180   # how far back to pull trades on first run
+CONGRESS_BUY_SCORE:   float = 65.0  # sub_score for a congressional purchase signal
+CONGRESS_SELL_SCORE:  float = 25.0  # sub_score for a congressional sale signal
+SIGNAL_CONGRESS_BUY:  str = "congress_buy"
+SIGNAL_CONGRESS_SELL: str = "congress_sell"
+
+# ── WSJ PDF Fetcher ────────────────────────────────────────────────────────────
+# Chrome profile that is already logged into WSJ — use login.py in WSJbot to refresh session.
+WSJ_CHROME_PROFILE_DIR:  str = r"C:\Users\tony\WSJbot\chromeprofile"
+WSJ_CHROME_PROFILE_NAME: str = "Default"
+
+# Gmail filter — matches the daily delivery email from WSJ.
+WSJ_EMAIL_FROM:    str = "access@interactive.wsj.com"
+WSJ_EMAIL_SUBJECT: str = "Wall Street Journal Print Edition"
+
+# Seconds to wait after navigating to the download URL before checking for the PDF.
+WSJ_DOWNLOAD_WAIT_SECS: int = 20
+# Max number of past days to backfill if the bookmark is stale.
+WSJ_BACKFILL_LIMIT_DAYS: int = 50
+# Settings key used to persist the last-successfully-downloaded edition date.
+WSJ_LAST_POLLED_KEY: str = "wsj_last_polled"
+# Settings key for the Gmail address (not sensitive — stored plaintext in settings).
+WSJ_GMAIL_USER_KEY: str = "wsj_gmail_user"

@@ -18,6 +18,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import (
@@ -29,9 +30,15 @@ import db
 from screener_config import (
     DEBUG_MODE,
     NEWS_WHISPER_MODEL,
+    NEWS_SOURCE_WSJ_PODCAST,
+    NEWS_SOURCE_WSJ_PDF,
+    NEWS_SOURCE_MORGAN_STANLEY,
+    NEWS_SOURCE_MOTLEY_FOOL,
+    NEWS_SOURCE_YAHOO_FINANCE,
     WSJ_PODCAST_FEEDS,
     MORGAN_STANLEY_PODCAST_FEED,
     MOTLEY_FOOL_PODCAST_FEED,
+    SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW,
 )
 
 # ── Formatting helpers ─────────────────────────────────────────────────────────
@@ -781,6 +788,96 @@ class StockPicksTab(ScrollableContainer):
         return Static("\n".join(lines), classes="pick-detail")
 
 
+# ── News tab ──────────────────────────────────────────────────────────────────
+
+_NEWS_FILTER_LABELS: list[tuple[str, str | None]] = [
+    ("All",           None),
+    ("WSJ Podcast",   NEWS_SOURCE_WSJ_PODCAST),
+    ("WSJ PDF",       NEWS_SOURCE_WSJ_PDF),
+    ("Morgan Stanley",NEWS_SOURCE_MORGAN_STANLEY),
+    ("Motley Fool",   NEWS_SOURCE_MOTLEY_FOOL),
+    ("Yahoo Finance", NEWS_SOURCE_YAHOO_FINANCE),
+]
+
+_NEWS_SOURCE_DISPLAY: dict[str, str] = {
+    NEWS_SOURCE_WSJ_PODCAST:    "WSJ Podcast",
+    NEWS_SOURCE_WSJ_PDF:        "WSJ PDF",
+    NEWS_SOURCE_MORGAN_STANLEY: "Morgan Stanley",
+    NEWS_SOURCE_MOTLEY_FOOL:    "Motley Fool",
+    NEWS_SOURCE_YAHOO_FINANCE:  "Yahoo Finance",
+}
+
+
+class NewsTab(Vertical):
+    CSS = """
+    NewsTab { height: 1fr; }
+    #news-filters {
+        height: 3;
+        background: $surface-darken-1;
+        border-bottom: solid $border;
+        padding: 0 1;
+        align: left middle;
+    }
+    .news-filter { min-width: 13; margin-right: 1; }
+    .news-filter.active { background: $primary; color: $background; }
+    #news-note { color: $text-muted; padding: 0 1; height: 1; }
+    #news-table { height: 1fr; }
+    """
+
+    _active_source: reactive[str | None] = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="news-filters"):
+            for label, source in _NEWS_FILTER_LABELS:
+                fid = f"nf-{(source or 'all').replace('_', '-')}"
+                yield Button(label, id=fid, classes="news-filter")
+        yield Label("", id="news-note")
+        yield DataTable(id="news-table", cursor_type="row")
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_columns("Date", "Source", "Ticker", "Headline")
+        self.query_one("#nf-all", Button).add_class("active")
+        self._load()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if not bid.startswith("nf-"):
+            return
+        for btn in self.query(".news-filter"):
+            btn.remove_class("active")
+        event.button.add_class("active")
+        # Map button id back to source value
+        for label, source in _NEWS_FILTER_LABELS:
+            fid = f"nf-{(source or 'all').replace('_', '-')}"
+            if fid == bid:
+                self._active_source = source
+                break
+
+    def watch__active_source(self, _: str | None) -> None:
+        self._load()
+
+    def _load(self) -> None:
+        articles = db.get_news_articles(source=self._active_source, limit=100)
+        table = self.query_one(DataTable)
+        table.clear()
+        if not articles:
+            self.query_one("#news-note", Label).update(
+                "No articles yet.  Run: python src/news.py --all"
+            )
+            return
+        self.query_one("#news-note", Label).update(
+            f"{len(articles)} article(s)"
+            + (f" — {_NEWS_SOURCE_DISPLAY.get(self._active_source, self._active_source)}" if self._active_source else "")
+        )
+        for art in articles:
+            pub      = (art.get("published_at") or "")[:10]
+            src      = _NEWS_SOURCE_DISPLAY.get(art.get("source") or "", art.get("source") or "")
+            headline = (art.get("headline") or "")[:80]
+            ticker   = art.get("ticker") or "—"
+            table.add_row(pub, src, ticker, headline)
+
+
 # ── Research Reports tab ───────────────────────────────────────────────────────
 
 _TAG_STYLE: dict[str, str] = {
@@ -903,34 +1000,173 @@ class ResearchPanel(Vertical):
                 yield StockPicksTab()
             with TabPane("Research Reports", id="tab-reports"):
                 yield ResearchReportsTab()
+            with TabPane("News", id="tab-news"):
+                yield NewsTab()
 
 
-class LogisticsPanel(ScrollableContainer):
-    CSS = """
-    LogisticsPanel { padding: 2; }
-    .panel-title { text-style: bold; color: $primary; margin-bottom: 1; }
-    #logistics-table { height: 1fr; }
+_SEVERITY_COLOR: dict[str, str] = {
+    SEVERITY_CRITICAL: "red",
+    SEVERITY_HIGH:     "dark_orange",
+    SEVERITY_MEDIUM:   "yellow",
+    SEVERITY_LOW:      "blue",
+}
+
+
+class EventListItem(Static):
+    """Clickable row in the Logistics event list."""
+
+    can_focus = True
+
+    class Selected(Message):
+        def __init__(self, uid: int) -> None:
+            self.uid = uid
+            super().__init__()
+
+    DEFAULT_CSS = """
+    EventListItem {
+        padding: 0 1;
+        height: 3;
+        border-bottom: solid $border;
+    }
+    EventListItem:hover { background: $primary-darken-2; }
+    EventListItem:focus  { background: $primary-darken-1; }
+    EventListItem.selected { background: $primary; color: $background; }
     """
 
+    def __init__(self, event: dict, **kwargs) -> None:
+        self._uid      = event["supply_chain_event_uid"]
+        self._severity = event.get("severity") or ""
+        color          = _SEVERITY_COLOR.get(self._severity, "white")
+        region         = (event.get("region") or "")[:22]
+        title          = (event.get("title") or "")[:26]
+        text = Text()
+        text.append(f"[{self._severity[:3]}] ", style=f"bold {color}")
+        text.append(region + "\n", style="bold")
+        text.append(title, style="dim")
+        super().__init__(text, **kwargs)
+
+    def on_click(self) -> None:
+        self.post_message(self.Selected(self._uid))
+
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            self.post_message(self.Selected(self._uid))
+
+
+class LogisticsPanel(Vertical):
+    CSS = """
+    LogisticsPanel { height: 1fr; }
+    #logi-header {
+        height: 2;
+        background: $surface-darken-1;
+        border-bottom: solid $border;
+        padding: 0 1;
+        align: left middle;
+    }
+    #logi-header Label { color: $primary; text-style: bold; }
+    #logi-body { height: 1fr; }
+    #logi-event-list {
+        width: 34;
+        border-right: solid $border;
+        overflow-y: auto;
+    }
+    #logi-right { width: 1fr; height: 1fr; }
+    #logi-detail {
+        height: 8;
+        padding: 1 2;
+        background: $surface-darken-1;
+        border-bottom: solid $border;
+        color: $text-muted;
+    }
+    #logi-companies { height: 1fr; }
+    """
+
+    _selected_uid: reactive[int | None] = reactive(None)
+
     def compose(self) -> ComposeResult:
-        yield Label("LOGISTICS — Active Supply Chain Events", classes="panel-title")
-        yield DataTable(id="logistics-table")
+        with Horizontal(id="logi-header"):
+            yield Label("LOGISTICS — Active Supply Chain Events")
+        with Horizontal(id="logi-body"):
+            yield ScrollableContainer(id="logi-event-list")
+            with Vertical(id="logi-right"):
+                yield Static("Select an event from the list.", id="logi-detail")
+                yield DataTable(id="logi-companies", cursor_type="row")
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        table.add_columns("ID", "Region", "Title", "Type", "Severity", "Date")
+        table = self.query_one("#logi-companies", DataTable)
+        table.add_columns("Role", "Ticker", "Sector", "Cannot Provide", "Will Redirect To", "Confidence")
+        self._load_events()
+
+    def _load_events(self) -> None:
         events = db.get_active_events()
+        event_list = self.query_one("#logi-event-list", ScrollableContainer)
+        event_list.remove_children()
         if not events:
-            table.add_row("—", "No active events", "", "", "", "")
+            event_list.mount(Label("  No active supply chain events.", id="logi-empty"))
             return
         for ev in events:
+            event_list.mount(EventListItem(ev))
+
+    def on_event_list_item_selected(self, message: EventListItem.Selected) -> None:
+        # Clear previous selection highlight
+        for item in self.query(EventListItem):
+            item.remove_class("selected")
+            if item._uid == message.uid:
+                item.add_class("selected")
+        self._selected_uid = message.uid
+
+    def watch__selected_uid(self, uid: int | None) -> None:
+        if uid is None:
+            return
+        self._update_detail(uid)
+
+    def _update_detail(self, uid: int) -> None:
+        ev = db.get_event(uid)
+        detail = self.query_one("#logi-detail", Static)
+        table  = self.query_one("#logi-companies", DataTable)
+        table.clear()
+
+        if not ev:
+            detail.update("Event not found.")
+            return
+
+        color    = _SEVERITY_COLOR.get(ev.get("severity") or "", "white")
+        severity = ev.get("severity") or "—"
+        text = Text()
+        text.append(f"{ev.get('title') or ''}\n", style="bold")
+        text.append(f"Region: {ev.get('region') or '—'}   ", style="dim")
+        text.append(f"Type: {ev.get('event_type') or '—'}   ", style="dim")
+        text.append(f"Severity: ", style="dim")
+        text.append(severity, style=f"bold {color}")
+        text.append(f"   Date: {(ev.get('event_date') or '')[:10]}\n", style="dim")
+
+        # Parse affected/beneficiary sector JSON if present
+        try:
+            import json as _json
+            aff = _json.loads(ev.get("affected_sectors") or "[]")
+            ben = _json.loads(ev.get("beneficiary_sectors") or "[]")
+        except Exception:
+            aff, ben = [], []
+        if aff:
+            text.append(f"Affected:    {', '.join(aff[:4])}\n", style="dim")
+        if ben:
+            text.append(f"Beneficiary: {', '.join(ben[:4])}", style="green dim")
+        detail.update(text)
+
+        stocks = db.get_event_stocks(uid)
+        if not stocks:
+            table.add_row("—", "No linked companies yet", "", "", "", "")
+            return
+        for s in stocks:
+            role_color = "red" if s.get("role") == "impacted" else "green"
+            role_cell  = Text(s.get("role") or "", style=role_color)
             table.add_row(
-                str(ev["supply_chain_event_uid"]),
-                ev.get("region") or "",
-                ev.get("title") or "",
-                ev.get("event_type") or "",
-                ev.get("severity") or "",
-                (ev.get("event_date") or "")[:10],
+                role_cell,
+                s.get("ticker") or "—",
+                (s.get("sector") or "—")[:22],
+                (s.get("cannot_provide") or "—")[:28],
+                (s.get("will_redirect") or "—")[:28],
+                s.get("confidence") or "—",
             )
 
 

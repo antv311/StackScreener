@@ -45,7 +45,11 @@ _CONFIDENCE_MULT: dict[str, float] = {
 # ── Signal pre-computation ─────────────────────────────────────────────────────
 
 def _build_supply_chain_scores() -> dict[int, float]:
-    """Map stock_uid → supply chain beneficiary score (0–100)."""
+    """Map stock_uid → supply chain beneficiary score (0–100).
+
+    Beneficiary scores are dampened by China revenue exposure when China-related
+    events are active — a stock dependent on China cannot fully fill China's gap.
+    """
     scores: dict[int, float] = {}
     for link in db.get_active_event_stocks():
         if link["role"] != "beneficiary":
@@ -55,6 +59,14 @@ def _build_supply_chain_scores() -> dict[int, float]:
         val = min(100.0, sev_score * conf_mult)
         stock_uid = link["stock_uid"]
         scores[stock_uid] = max(scores.get(stock_uid, 0.0), val)
+
+    # Dampen beneficiary scores proportional to China revenue when China events are active.
+    if scores and db.get_active_china_events():
+        china_map = db.get_china_revenue_map()
+        for stock_uid, china_pct in china_map.items():
+            if stock_uid in scores:
+                scores[stock_uid] = round(scores[stock_uid] * (1.0 - china_pct), 2)
+
     return scores
 
 
@@ -65,6 +77,17 @@ def _build_inst_flow_scores() -> dict[int, float]:
     for row in rows:
         bucket.setdefault(row["stock_uid"], []).append(float(row["sub_score"]))
     return {uid: min(100.0, sum(vals) / len(vals)) for uid, vals in bucket.items()}
+
+
+def _build_sc_context() -> dict[int, str]:
+    """Map stock_uid → event title for display in thematic scan output."""
+    context: dict[int, str] = {}
+    for link in db.get_active_event_stocks():
+        if link["role"] != "beneficiary" or link["stock_uid"] in context:
+            continue
+        if link.get("title"):
+            context[link["stock_uid"]] = link["title"]
+    return context
 
 
 # ── Universe loading ───────────────────────────────────────────────────────────
@@ -166,8 +189,9 @@ def run_scan(
     symbol_count = len(stocks)
     print(f"Universe: {symbol_count} stocks")
 
-    sc_scores = _build_supply_chain_scores()
-    if_scores = _build_inst_flow_scores()
+    sc_scores  = _build_supply_chain_scores()
+    if_scores  = _build_inst_flow_scores()
+    sc_context = _build_sc_context() if mode == SCAN_MODE_THEMATIC else {}
 
     scored: list[dict] = []
     failed = 0
@@ -204,41 +228,35 @@ def run_scan(
     for rank, row in enumerate(scored, 1):
         row["composite_rank"] = rank
 
-    # Persist to scan_results
-    for row in scored:
-        db.insert_scan_result({
-            "stock_uid":          row["stock_uid"],
-            "scan_uid":           row["scan_uid"],
-            "composite_score":    row["composite_score"],
-            "composite_rank":     row["composite_rank"],
-            "score_ev_revenue":   row["score_ev_revenue"],
-            "score_pe":           row["score_pe"],
-            "score_ev_ebitda":    row["score_ev_ebitda"],
-            "score_profit_margin": row["score_profit_margin"],
-            "score_peg":          row["score_peg"],
-            "score_debt_equity":  row["score_debt_equity"],
-            "score_cfo_ratio":    row["score_cfo_ratio"],
-            "score_altman_z":     row["score_altman_z"],
-            "score_supply_chain": row["score_supply_chain"],
-            "score_inst_flow":    row["score_inst_flow"],
-            "price_at_scan":      row["price_at_scan"],
-            "market_cap_at_scan": row["market_cap_at_scan"],
-        })
+    # Persist to scan_results — single batched transaction
+    db.insert_scan_results_batch(scored)
 
     db.complete_scan(scan_uid, symbol_count, len(scored), failed)
 
     # Print top N
     top = scored[:top_n]
+    show_context = mode == SCAN_MODE_THEMATIC and sc_context
     print(f"\nTop {len(top)} results (of {len(scored)} scored):\n")
-    print(f"{'Rank':<5} {'Ticker':<8} {'Exchange':<9} {'Sector':<32} {'Score':>6}  {'Price':>8}  {'SC':>5}  {'Flow':>5}")
-    print("-" * 86)
-    for row in top:
-        print(
-            f"  {row['composite_rank']:<4} {row['ticker']:<8} {row['exchange']:<9} "
-            f"{(row.get('sector') or ''):<32} {row['composite_score']:>6.1f}  "
-            f"{(row.get('price') or 0.0):>8.2f}  "
-            f"{row['score_supply_chain']:>5.0f}  {row['score_inst_flow']:>5.0f}"
-        )
+    if show_context:
+        print(f"{'Rank':<5} {'Ticker':<8} {'Exchange':<9} {'Sector':<28} {'Score':>6}  {'SC':>5}  Event")
+        print("-" * 90)
+        for row in top:
+            ctx = sc_context.get(row["stock_uid"], "")
+            print(
+                f"  {row['composite_rank']:<4} {row['ticker']:<8} {row['exchange']:<9} "
+                f"{(row.get('sector') or ''):<28} {row['composite_score']:>6.1f}  "
+                f"{row['score_supply_chain']:>5.0f}  {ctx[:30]}"
+            )
+    else:
+        print(f"{'Rank':<5} {'Ticker':<8} {'Exchange':<9} {'Sector':<32} {'Score':>6}  {'Price':>8}  {'SC':>5}  {'Flow':>5}")
+        print("-" * 86)
+        for row in top:
+            print(
+                f"  {row['composite_rank']:<4} {row['ticker']:<8} {row['exchange']:<9} "
+                f"{(row.get('sector') or ''):<32} {row['composite_score']:>6.1f}  "
+                f"{(row.get('price') or 0.0):>8.2f}  "
+                f"{row['score_supply_chain']:>5.0f}  {row['score_inst_flow']:>5.0f}"
+            )
 
     if export_csv:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

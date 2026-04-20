@@ -2,7 +2,7 @@
 
 All tables live in `stackscreener.db`. All access goes through `db.py` only.
 Schema is created by `db.init_db()`. Migrations (new columns) run automatically on startup.
-**16 tables total. 2 covering indexes.**
+**16 tables total. 8 covering indexes.**
 
 ---
 
@@ -113,8 +113,8 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `delisted` | INTEGER | 0 = active (default), 1 = delisted — skipped by enricher and scans |
 
 **Indexes:**
-- `idx_stocks_delisted_enriched` on `(delisted, last_enriched_at)` — covers enrichment staleness query
-- `idx_stocks_delisted_price` on `(delisted, price)` — covers price history pending query
+- `idx_stocks_delisted_enriched` on `(delisted, last_enriched_at)` — enrichment staleness query
+- `idx_stocks_delisted_price` on `(delisted, price)` — price history pending query
 
 ```sql
 -- Stocks needing enrichment (use db.get_pending_enrichment()):
@@ -180,6 +180,9 @@ Metadata for each scan run.
 
 ---
 
+**Indexes:**
+- `idx_scan_results_scan_rank` on `(scan_uid, composite_rank)` — result lookup by scan
+
 ### scan_results
 Per-symbol scored output for each scan run.
 
@@ -204,6 +207,9 @@ Per-symbol scored output for each scan run.
 | `scored_at` | TEXT | |
 
 ---
+
+**Indexes:**
+- `idx_sce_status` on `(status)` — active event queries
 
 ### supply_chain_events
 Active and historical disruption events. Drives the Logistics map.
@@ -281,6 +287,9 @@ Earnings, splits, IPOs, economic events. IPOs pre-seeded by `enricher.py` daily.
 
 ---
 
+**Indexes:**
+- `idx_source_signals_stock` on `(stock_uid)` — signal score and stock picks queries
+
 ### source_signals
 Per-stock signals from congressional trades, SEC filings, and options flow.
 
@@ -317,20 +326,26 @@ Long-form research cards shown in the Research → Research Reports tab.
 ---
 
 ### edgar_facts
-Structured XBRL data pulled from SEC EDGAR for each stock. Refreshed quarterly.
+Structured XBRL and 10-K text data pulled from SEC EDGAR for each stock. Refreshed quarterly (XBRL) or every 6 months (10-K text).
 
 | Column | Type | Notes |
 |---|---|---|
 | `edgar_fact_uid` | INTEGER PK | |
 | `stock_uid` | INTEGER FK → stocks | |
-| `fact_type` | TEXT | `geographic_revenue` or `customer_concentration` |
+| `fact_type` | TEXT | see fact types below |
 | `period` | TEXT | Fiscal year, e.g. `2023` |
 | `value_json` | TEXT | JSON blob — shape varies by fact_type (see below) |
 | `fetched_at` | TEXT | |
 
-`value_json` shapes:
-- `geographic_revenue`: `{"US": 0.42, "China": 0.19, "Europe": 0.27, "Other": 0.12}`
-- `customer_concentration`: `[{"name": "Apple Inc.", "pct": 0.18, "segment": "Products"}]`
+**Fact types** (`screener_config.py`):
+- `geographic_revenue` — `{"US": 0.42, "China": 0.19, "Europe": 0.27, "Other": 0.12}`
+- `customer_concentration` — `[{"name": "Apple Inc.", "pct": 0.18, "segment": "Products"}]`
+- `risk_flags` — `{"china_dependency": true, "tariff_risk": false, ...}` — 8 boolean supply-chain risk flags from 10-K text
+- `filing_customers` — `[{"name": "Walmart", "pct": 0.22}]` — customer % mentions extracted from 10-K narrative
+
+**Indexes:**
+- `idx_edgar_facts_stock_type` on `(stock_uid, fact_type)` — per-stock fact lookup
+- `idx_edgar_facts_type_fetched` on `(fact_type, fetched_at)` — pending pipeline queries
 
 ```python
 # Stocks with >15% China revenue exposure:
@@ -338,6 +353,10 @@ db.get_stocks_by_china_exposure(0.15)
 
 # All geographic facts for a stock:
 db.get_edgar_facts(stock_uid, 'geographic_revenue')
+
+# Scoring: China revenue map used to dampen beneficiary SC scores when China events are active
+db.get_china_revenue_map()        # {stock_uid: china_pct}
+db.get_active_china_events()      # active events where country_code='CN' or region contains China/Taiwan
 ```
 
 ---
@@ -443,6 +462,9 @@ WHERE stock_uid = ? ORDER BY published_at DESC LIMIT 20;
 ```
 
 ---
+
+**Indexes:**
+- `idx_news_articles_source_pub` on `(source, published_at DESC)` — News tab filter queries
 
 ### news_articles
 Headlines, transcripts, and article text from all news sources. One row per article/episode.

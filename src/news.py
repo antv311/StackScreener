@@ -39,6 +39,7 @@ import yfinance as yf
 import db
 from screener_config import (
     DEBUG_MODE,
+    FFMPEG_BIN_DIR,
     NEWS_AUDIO_DIR,
     NEWS_PDF_DIR,
     NEWS_WHISPER_MODEL,
@@ -52,6 +53,7 @@ from screener_config import (
     NEWS_SOURCE_YAHOO_FINANCE,
     NEWS_SIGNAL_TRANSCRIPT_MENTION,
     NEWS_SIGNAL_NEWS_HEADLINE,
+    PODCAST_FEEDS,
     WSJ_PODCAST_FEEDS,
     MORGAN_STANLEY_PODCAST_FEED,
     MOTLEY_FOOL_PODCAST_FEED,
@@ -71,6 +73,12 @@ _FALSE_POSITIVES: frozenset[str] = frozenset({
 })
 
 _TICKER_RE = re.compile(r'\b([A-Z]{2,5})\b')
+
+# Ensure Whisper can find ffmpeg — prepend the configured bin dir to PATH.
+if FFMPEG_BIN_DIR and os.path.isdir(FFMPEG_BIN_DIR):
+    _path = os.environ.get("PATH", "")
+    if FFMPEG_BIN_DIR not in _path:
+        os.environ["PATH"] = FFMPEG_BIN_DIR + os.pathsep + _path
 
 # Cached globals — loaded once per process.
 _whisper_model = None
@@ -204,8 +212,12 @@ def _download_audio(url: str) -> str:
     _ensure_dirs()
     fname = os.path.basename(url.split("?")[0]) or "episode.mp3"
     dest = os.path.join(NEWS_AUDIO_DIR, fname)
-    resp = requests.get(url, stream=True, timeout=120)
+    resp = requests.get(url, stream=True, timeout=120,
+                        headers={"User-Agent": "StackScreener/1.0 (podcast aggregator)"})
     resp.raise_for_status()
+    ct = resp.headers.get("content-type", "")
+    if "html" in ct or "xml" in ct:
+        raise ValueError(f"Expected audio, got {ct} — feed may require authentication")
     with open(dest, "wb") as fh:
         for chunk in resp.iter_content(chunk_size=131_072):
             fh.write(chunk)
@@ -302,6 +314,34 @@ def fetch_morgan_stanley(max_episodes: int = NEWS_MAX_EPISODES) -> int:
 def fetch_motley_fool(max_episodes: int = NEWS_MAX_EPISODES) -> int:
     url = db.get_setting(1, "motley_fool_feed") or MOTLEY_FOOL_PODCAST_FEED
     return _process_podcast(url, NEWS_SOURCE_MOTLEY_FOOL, max_episodes)
+
+
+def fetch_all_podcasts(max_episodes: int = NEWS_MAX_EPISODES) -> int:
+    """
+    Process every feed in PODCAST_FEEDS. Settings-table overrides apply to the
+    legacy single-feed keys (wsj_podcast_feed_1/2, morgan_stanley_feed,
+    motley_fool_feed) — all other feeds use the config URL directly.
+    """
+    # Build overrides from the settings table for the 4 legacy keys
+    overrides: dict[str, str] = {}
+    for setting_key, feed_url in [
+        ("wsj_podcast_feed_1",  WSJ_PODCAST_FEEDS[0] if WSJ_PODCAST_FEEDS else ""),
+        ("wsj_podcast_feed_2",  WSJ_PODCAST_FEEDS[1] if len(WSJ_PODCAST_FEEDS) > 1 else ""),
+        ("morgan_stanley_feed", MORGAN_STANLEY_PODCAST_FEED),
+        ("motley_fool_feed",    MOTLEY_FOOL_PODCAST_FEED),
+    ]:
+        saved = db.get_setting(1, setting_key)
+        if saved:
+            overrides[feed_url] = saved  # keyed by default URL so we can remap below
+
+    total = 0
+    for source, url in PODCAST_FEEDS:
+        effective_url = overrides.get(url, url)  # use settings override if present
+        if not effective_url:
+            continue
+        n = _process_podcast(effective_url, source, max_episodes)
+        total += n
+    return total
 
 
 def fetch_yahoo_news(tickers: list[str]) -> int:
@@ -441,35 +481,27 @@ def run(
         ingest_pdfs = True
 
     if podcasts:
-        print("── WSJ Podcasts ─────────────────────────────────")
-        n = fetch_wsj_podcasts(max_episodes)
-        print(f"   {n} episodes stored\n")
-
-        print("── Morgan Stanley ───────────────────────────────")
-        n = fetch_morgan_stanley(max_episodes)
-        print(f"   {n} episodes stored\n")
-
-        print("── Motley Fool Money ─────────────────────────────")
-        n = fetch_motley_fool(max_episodes)
+        print("-- Podcasts (all sources) -----------------------")
+        n = fetch_all_podcasts(max_episodes)
         print(f"   {n} episodes stored\n")
 
     if yahoo_tickers:
-        print("── Yahoo Finance News ───────────────────────────")
+        print("-- Yahoo Finance News ---------------------------")
         n = fetch_yahoo_news(yahoo_tickers)
         print(f"   {n} articles stored\n")
 
     if watchlist:
-        print("── Yahoo Finance — Watchlist ─────────────────────")
+        print("-- Yahoo Finance - Watchlist --------------------")
         n = fetch_watchlist_yahoo_news()
         print(f"   {n} articles stored\n")
 
     if wsj_pdf:
-        print("── WSJ PDF ──────────────────────────────────────")
+        print("-- WSJ PDF --------------------------------------")
         ingest_wsj_pdf(wsj_pdf)
         print()
 
     if ingest_pdfs:
-        print("── WSJ PDF Directory ────────────────────────────")
+        print("-- WSJ PDF Directory ----------------------------")
         n = ingest_pending_pdfs()
         print(f"   {n} PDFs ingested\n")
 

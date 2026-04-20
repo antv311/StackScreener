@@ -1,6 +1,6 @@
 # StackScreener — Development Roadmap
 
-**Current Status:** Phase 0 complete. Phase 1a (app shell) and 1c (Research tabs) complete. Phase 2d (news aggregator) partial — news.py built, feed URLs need verification before first run.
+**Current Status:** Phase 0, 1a, 1c complete. Phase 2b (EDGAR), 2d (news), 2f (thematic scan) complete. Next: Phase 3 (Form 4 insider trades, 13F, options flow).
 **Last updated:** April 2026
 
 ---
@@ -98,7 +98,7 @@ Add the core intelligence layer that makes StackScreener different from any othe
 - [x] `edgar.py --seed-ciks` — map all 6,900 tickers to SEC CIKs
 - [x] `edgar.py --fetch-facts` — pull XBRL geographic revenue + customer concentration
 - [x] `db.get_stocks_by_china_exposure()` — query stocks by China revenue threshold
-- [ ] Wire geographic exposure into supply chain scoring (high China revenue = higher impact score)
+- [x] Wire geographic exposure into supply chain scoring (high China revenue dampens beneficiary score)
 
 ### 2c — EDGAR LLM Extraction (pending P40 GPU)
 
@@ -107,7 +107,7 @@ Add the core intelligence layer that makes StackScreener different from any othe
 - [ ] Auto-populate `event_stocks` with medium-confidence relationships from filings
 - [ ] Zero API cost; runs entirely local
 
-### 2d — News Aggregation (partial ✅)
+### 2d — News Aggregation ✅ COMPLETE
 
 Module: `src/news.py` — built
 Table: `news_articles` (16th table) — built
@@ -121,19 +121,18 @@ Dependencies: `torch` (custom cp314 wheel), `openai-whisper`, `pypdf` (already p
 - [x] **WSJ newspaper PDF** — `pypdf` text extraction; drop PDF in `src/News/pdfs/`
 - [x] Ticker mention detection — regex against full 6,900-ticker DB set; common words filtered
 - [x] Signals stored in `source_signals` (one row per ticker per article)
-- [ ] Verify RSS feed URLs in `screener_config.py` before first run
-- [ ] Add news section to Research screen in app (Phase 1c follow-on)
+- [x] All 7 RSS feed URLs verified live (April 2026)
+- [x] News tab in Research screen — filterable by source, shows headline + ticker
 
 ### 2e — Financial Podcast Transcripts ✅ (merged into 2d)
 
 Covered by `news.py` podcast pipeline above — all three shows use the same RSS + Whisper path.
 
-### 2f — Thematic Scan Mode
+### 2f — Thematic Scan Mode ✅ COMPLETE
 
-- [ ] New scan mode: `run_thematic` — filters universe to disruption-relevant sectors
-- [ ] Supply chain signal score layered on top of fundamental score
-  (Tier 1 sector match + Tier 2 curated links + EDGAR geographic exposure)
-- [ ] Output: ranked list of gap-filler candidates with disruption context
+- [x] `--mode thematic` — filters universe to disruption-relevant sectors (Tier 1 sector match + Tier 2 curated beneficiary links)
+- [x] Supply chain signal score layered on top of fundamental score; China revenue dampens beneficiary scores when China events active
+- [x] Output shows event name alongside SC score for each beneficiary pick
 
 **Exit criteria:** Given a real supply chain event, StackScreener surfaces a ranked list of
 companies positioned to benefit, with geographic exposure data and news signals attached.
@@ -145,13 +144,13 @@ companies positioned to benefit, with geographic exposure data and news signals 
 Layer in free public smart-money signals to validate or strengthen supply chain picks.
 Quiver Quant and Unusual Whales were dropped — too expensive. Replaced with free public sources.
 
-- [ ] Integrate **Senate Stock Watcher API** (congressional trades — Senate, free)
-- [ ] Integrate **House Stock Watcher API** (congressional trades — House, free)
+- [x] Integrate **Senate Stock Watcher API** (congressional trades — Senate, free) — `inst_flow.py`
+- [x] Integrate **House Stock Watcher API** (congressional trades — House, free) — `inst_flow.py`
+- [x] Store signals in `source_signals` table via `db.py`
+- [x] Incorporate flow signals into final ranking (configurable weight in `screener_config.py`)
 - [ ] Integrate **SEC EDGAR Form 4** (insider buy/sell filings, free public API)
 - [ ] Integrate **SEC EDGAR Form 13F** (institutional holdings, free public API)
 - [ ] Integrate **yfinance options chain** (basic options flow, free)
-- [ ] Store all signals in `source_signals` table via `db.py`
-- [ ] Incorporate flow signals into final ranking (configurable weight in `screener_config.py`)
 - [ ] Confluence view: supply chain signal + institutional flow + fundamentals all aligned
 
 **Exit criteria:** A scan result shows which supply chain picks also have congressional or

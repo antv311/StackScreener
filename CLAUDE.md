@@ -66,9 +66,9 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `screener.py` | Core scoring logic only — no hardcoded magic numbers |
 | `screener_run.py` | CLI entry point and scan orchestration only |
 | `supply_chain.py` | Supply chain signal ingestion and sector mapping only |
-| `edgar.py` | SEC EDGAR XBRL pipeline (CIK seeding + facts fetch) only |
-| `news.py` | News/media aggregation + ticker tagging only *(Phase 2d)* |
-| `inst_flow.py` | Congressional trades + SEC insider/13F ingestion only *(Phase 3)* |
+| `edgar.py` | SEC EDGAR pipeline: CIK seeding, XBRL facts, 10-K text extraction |
+| `news.py` | News/media aggregation + ticker tagging |
+| `inst_flow.py` | Congressional trades (Senate + House) + SEC insider/13F ingestion *(Phase 3)* |
 | `app.py` | Desktop TUI (Textual) — UI only, no business logic |
 | `pdf_generator.py` | PDF output only — fpdf2 API |
 | `mailer.py` | Email delivery only |
@@ -85,6 +85,7 @@ Each file owns exactly one concern. Do not cross these boundaries.
 - Always scope stock queries to active stocks with `AND delisted = 0` unless explicitly including delisted
 - Use `db.get_pending_enrichment()` / `db.get_pending_history()` rather than rebuilding those filters inline
 - Use `db.get_watched_tickers()` for watchlist ticker lists; `db.get_stocks_by_tickers(list)` for batch stock lookups; `db.get_news_article_urls(source)` for PDF deduplication
+- Use `db.insert_scan_results_batch(rows)` — not per-row `insert_scan_result()` — when persisting full scan output
 - Use `if param is not None:` not `if param:` when conditionally appending to a query — `0` and empty string are valid parameter values
 - New query helpers that filter or paginate data belong in `db.py`, not in the calling module
 - Migrations go in `_migrate_db()` in `db.py` — one `ALTER TABLE` per new column, wrapped in `try/except OperationalError`
