@@ -2,8 +2,8 @@
 
 This file tells Claude Code how to work on this project. Read it before making any changes.
 Always read `CONTEXT.md` first for full project context, and `ROADMAP.md` to confirm what
-phase is active before writing any code. Also please also review `tree.md` , `DATABASE.md` 
-for context and information about how everything is connected.
+phase is active before writing any code. Also review `tree.md` and `DATABASE.md` for
+the full file structure and schema.
 
 ---
 
@@ -48,6 +48,7 @@ Never introduce these — they are banned:
 | String-formatted SQL | Always use parameterized queries (`?`) |
 | Plaintext API keys anywhere | Always encrypted via `db.set_api_key()` |
 | `crypto.encrypt/decrypt` outside `db.py` | Only `db.py` calls crypto directly |
+| `db.query()` called directly from UI/business code | Add a named helper to `db.py` instead |
 
 ---
 
@@ -65,6 +66,9 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `screener.py` | Core scoring logic only — no hardcoded magic numbers |
 | `screener_run.py` | CLI entry point and scan orchestration only |
 | `supply_chain.py` | Supply chain signal ingestion and sector mapping only |
+| `edgar.py` | SEC EDGAR XBRL pipeline (CIK seeding + facts fetch) only |
+| `news.py` | News/media aggregation + ticker tagging only *(Phase 2d)* |
+| `inst_flow.py` | Congressional trades + SEC insider/13F ingestion only *(Phase 3)* |
 | `app.py` | Desktop TUI (Textual) — UI only, no business logic |
 | `pdf_generator.py` | PDF output only — fpdf2 API |
 | `mailer.py` | Email delivery only |
@@ -78,10 +82,13 @@ Each file owns exactly one concern. Do not cross these boundaries.
 - Always use parameterized queries — never f-string or format SQL
 - Staleness tracked via `last_enriched_at` on `stocks` — enricher checks this
 - All status/type string values come from constants in `screener_config.py`
-- Always scope stock queries to active stocks with `AND delisted = 0` unless explicitly including delisted; use `db.get_pending_enrichment()` / `db.get_pending_history()` rather than rebuilding those filters inline
+- Always scope stock queries to active stocks with `AND delisted = 0` unless explicitly including delisted
+- Use `db.get_pending_enrichment()` / `db.get_pending_history()` rather than rebuilding those filters inline
+- Use `db.get_watched_tickers()` for watchlist ticker lists; `db.get_stocks_by_tickers(list)` for batch stock lookups; `db.get_news_article_urls(source)` for PDF deduplication
 - Use `if param is not None:` not `if param:` when conditionally appending to a query — `0` and empty string are valid parameter values
-- New query helpers that filter or paginate the stocks table belong in `db.py`, not in the calling module
-- Migrations go in `_migrate_db()` in `db.py` — one `ALTER TABLE` per new column, wrapped in try/except OperationalError
+- New query helpers that filter or paginate data belong in `db.py`, not in the calling module
+- Migrations go in `_migrate_db()` in `db.py` — one `ALTER TABLE` per new column, wrapped in `try/except OperationalError`
+- Covering indexes also go in `_migrate_db()` using `CREATE INDEX IF NOT EXISTS` — **not** in `executescript`, because they may reference columns added by migrations that run after `executescript`
 
 Watchlist query pattern (canonical):
 ```python
@@ -93,6 +100,12 @@ Pending enrichment pattern (canonical):
 ```python
 db.get_pending_enrichment(limit, skip_delisted=True)
 db.get_pending_history(limit, skip_delisted=True)
+```
+
+Settings pattern (user-scoped):
+```python
+db.get_setting(user_uid, "theme", default="dark")
+db.set_setting(user_uid, "theme", "light")
 ```
 
 ---
@@ -110,22 +123,29 @@ db.get_pending_history(limit, skip_delisted=True)
 
 ## Scoring & Config
 
-- All weights, thresholds, scoring constants live in `screener_config.py`
-- Score components: EV/R, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z (0–100 each; None → 50 neutral)
+- All weights, thresholds, and scoring constants live in `screener_config.py`
+- Score components: EV/R, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z (0–100 each; `None` → 50 neutral)
 - `score_cfo_ratio` and `score_altman_z` return 50 until balance sheet data is seeded — do not remove these placeholders
-- Supply chain and inst flow are **additive overlays** on top of the fundamental base (max +20 pts each at default weights)
-- Scan modes: `nsr` (all active), `thematic` (event-sector filtered), `watchlist` (named list) — constants in `SCAN_MODE_*`
-- Institutional flow sources: Senate/House Stock Watcher (congressional trades), SEC EDGAR Form 4 (insider trades), SEC EDGAR Form 13F (institutional holdings), yfinance options chain — all free, no paid API keys required
+- Supply chain and inst flow are **additive overlays** on top of the fundamental base (max +20 pts each at default weights of 1.5)
+- Scan modes: `nsr` (all active stocks), `thematic` (event-sector filtered), `watchlist` (named list) — constants in `SCAN_MODE_*`
+- Institutional flow sources (all free, no paid keys): Senate/House Stock Watcher (congressional trades), SEC EDGAR Form 4 (insider trades), SEC EDGAR Form 13F (institutional holdings), yfinance options chain
 
 ---
 
-## UI Screens (Textual TUI — app.py)
+## UI Conventions (Textual TUI — app.py)
 
-Match the agreed design. Three sidebar sections, each with its own screen:
+Match the agreed design from `CONTEXT.md` and `Mock_up/`. Three sidebar sections:
 
-1. **Home** — heatmap display + index selector
-2. **Research** — tabbed: Screener / Calendar / Stock Comparison / Stock Picks / Research Reports
-3. **Logistics** — world map with disruption pins + company redirect table
+1. **Home** — DB stats summary + last scan summary (heatmap in Phase 1b)
+2. **Research** — five tabs: Screener · Calendar · Stock Comparison · Stock Picks · Research Reports
+3. **Logistics** — active supply chain events table (world map in Phase 1d)
+
+**Research tab conventions:**
+- `ScreenerTab` — filter dropdowns (Exchange/Sector/MCap/P/E/Signal) + DataTable; filter in-memory after one DB load; cap display at 200 rows
+- `CalendarTab` — DayCell widgets in a 7-column Horizontal; `_week_offset` reactive drives week navigation; filter buttons per event type
+- `StockComparisonTab` — 4 ticker inputs → `db.get_stock_by_ticker()` lookups → DataTable with section headers and ▲/▼ highlights; remount DataTable on each compare to reset columns
+- `StockPicksTab` — Collapsible cards for top 15 scan results; source signals from `db.get_stock_signals()`
+- `ResearchReportsTab` — Static cards from `db.get_research_reports()`; handles empty state with Phase 2 context message
 
 Do not invent new screens or reorganize navigation without confirming first.
 
@@ -138,6 +158,7 @@ Do not invent new screens or reorganize navigation without confirming first.
 - `frozenset` for constant set membership checks
 - `dataclasses.fields()` for iterating model fields — not hand-rolled field lists
 - Imports: stdlib → third-party → local, one blank line between groups
+- Utility/formatting helpers in `app.py` (`_fmt_mcap`, `_fmt_pct`, `_fmt_ratio`, `_score_bar`) — keep them at module level, not inside classes
 
 ---
 
@@ -151,7 +172,7 @@ Do not invent new screens or reorganize navigation without confirming first.
 
 ## Output & Results
 
-- All scan output goes to `Results/<scan_mode>/<datetime>/`
+- All scan output goes to `src/Results/<scan_mode>/<datetime>/`
 - `Results/` is gitignored — never commit scan output
 - PDF generation uses fpdf2 — see `pdf_generator.py`
 
@@ -166,6 +187,8 @@ builds/
 __pycache__/
 *.pyc
 Results/
+src/News/audio/
+src/News/pdfs/
 stackscreener.db
 *.db
 ```
@@ -179,12 +202,13 @@ stackscreener.db
 3. DB changes → `db.py`:
    - Add column to `init_db()` CREATE TABLE
    - Add migration to `_migrate_db()` (ALTER TABLE, catches OperationalError)
+   - Add covering indexes to `_migrate_db()` index_migrations list (never in executescript)
    - Update matching file in `sql_tables/`
    - Update `DATABASE.md`
 4. Encryption/auth changes → `crypto.py` only
-5. Business logic → appropriate module (`screener.py`, `supply_chain.py`, etc.)
+5. Business logic → appropriate module (`screener.py`, `supply_chain.py`, `edgar.py`, etc.)
 6. UI changes → `app.py` only
-7. Update `CONTEXT.md` and `tree.md` if the architecture or file structure changes
+7. Update `CONTEXT.md`, `tree.md`, and `ROADMAP.md` to reflect the new state
 
 ---
 
@@ -198,3 +222,4 @@ stackscreener.db
 - Don't commit `.db` files or scan results
 - Don't reorganize the UI navigation without confirming the change first
 - Don't store API keys or secrets in flat files, env vars, or source code
+- Don't put `CREATE INDEX` statements inside `executescript` — they must go in `_migrate_db()` so they run after column migrations

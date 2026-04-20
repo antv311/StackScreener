@@ -1,6 +1,6 @@
 # StackScreener — Development Roadmap
 
-**Current Status:** Phase 0 complete. Database fully seeded and enriched. Next: scoring engine.
+**Current Status:** Phase 0 complete. Phase 1a (app shell) and 1c (Research tabs) complete. Phase 2d (news aggregator) partial — news.py built, feed URLs need verification before first run.
 **Last updated:** April 2026
 
 ---
@@ -17,7 +17,7 @@ is a real product. A half-finished web app is a liability.
 
 - [x] Python 3.14.2 venv at `venv/`, C extensions compiled, all deps installed
 - [x] `screener_config.py` — all constants, weights, thresholds, status strings, provider names
-- [x] `db.py` — full SQLite layer: 15 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
+- [x] `db.py` — full SQLite layer: 16 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
 - [x] `crypto.py` — Fernet encryption via OS keyring + PBKDF2 password hashing
 - [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch (6,924 stocks)
 - [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check + 5y price history
@@ -46,13 +46,13 @@ Turn the screener into a usable standalone desktop application matching the agre
 - [ ] Full-width market heatmap (tiles color-coded by % change, sized by market cap)
 - [ ] Index selector at bottom: S&P 500 / DOW / Russell 1000 / Recommended / All
 
-### 1c — Research Screen (5 sub-tabs)
+### 1c — Research Screen (5 sub-tabs) ✅ COMPLETE
 
-- [ ] **Screener** — filterable/sortable table; filters: Exchange, Sector, Market Cap, P/E, Signal
-- [ ] **Calendar** — weekly grid with color-coded event chips (Earnings / Splits / IPOs / Economic)
-- [ ] **Stock Comparison** — side-by-side up to 4 stocks; Valuation, Price Performance, Income
-- [ ] **Stock Picks** — collapsible cards scored across Senate/House Stock Watcher, SEC EDGAR (Form 4/13F), Yahoo Finance, options flow
-- [ ] **Research Reports** — long-form cards tagged by type (Supply Chain / Fundamentals / Inst. Flow)
+- [x] **Screener** — filter dropdowns (Exchange/Sector/MCap/P/E/Signal); score bar; in-memory filtering; 200-row cap
+- [x] **Calendar** — 7-day weekly grid (DayCell per day); color-coded event chips; week navigation; filter buttons; detail table
+- [x] **Stock Comparison** — 4 ticker inputs; DB lookup; Valuation/Income/Risk sections; green ▲ best / red ▼ worst per row
+- [x] **Stock Picks** — collapsible Textual cards for top 15 scan results; source signal breakdown (populated in Phase 3)
+- [x] **Research Reports** — scrollable tagged cards from `research_reports` table; empty-state with Phase 2 context
 
 ### 1d — Logistics Screen
 
@@ -107,23 +107,26 @@ Add the core intelligence layer that makes StackScreener different from any othe
 - [ ] Auto-populate `event_stocks` with medium-confidence relationships from filings
 - [ ] Zero API cost; runs entirely local
 
-### 2d — News Aggregation
+### 2d — News Aggregation (partial ✅)
 
-New module: `src/news.py`
-New table: `news_articles` (article_uid, stock_uid, source, headline, summary, url, published_at, sentiment)
+Module: `src/news.py` — built
+Table: `news_articles` (16th table) — built
+Directories: `src/News/audio/` (temp MP3), `src/News/pdfs/` (WSJ PDFs kept)
+Dependencies: `torch` (custom cp314 wheel), `openai-whisper`, `pypdf` (already present)
 
-- [ ] **Reuters RSS** — free feed, no key required
-- [ ] **Yahoo Finance** — `yf.Ticker(ticker).news` already available via yfinance
-- [ ] **WSJ PDF** — parse daily newspaper PDF via `pypdf`; extract headlines + article text
-- [ ] Tag articles with `stock_uid` via ticker mention detection
-- [ ] Add news section to Research screen in app
+- [x] **WSJ podcasts** — RSS → MP3 → Whisper transcription; uses embedded transcript tag if present
+- [x] **Morgan Stanley "Thoughts on the Market"** — same RSS + Whisper pipeline
+- [x] **Motley Fool Money** — same RSS + Whisper pipeline
+- [x] **Yahoo Finance** — `yf.Ticker(ticker).news` per ticker or full watchlist
+- [x] **WSJ newspaper PDF** — `pypdf` text extraction; drop PDF in `src/News/pdfs/`
+- [x] Ticker mention detection — regex against full 6,900-ticker DB set; common words filtered
+- [x] Signals stored in `source_signals` (one row per ticker per article)
+- [ ] Verify RSS feed URLs in `screener_config.py` before first run
+- [ ] Add news section to Research screen in app (Phase 1c follow-on)
 
-### 2e — Financial Podcast Transcripts
+### 2e — Financial Podcast Transcripts ✅ (merged into 2d)
 
-- [ ] **WSJ Podcast** — transcripts available on wsj.com (scrape or RSS)
-- [ ] **Motley Fool Money** — transcripts available on fool.com
-- [ ] Parse for ticker mentions → store in `source_signals` table
-- [ ] Feed sentiment signals into Stock Picks scoring
+Covered by `news.py` podcast pipeline above — all three shows use the same RSS + Whisper path.
 
 ### 2f — Thematic Scan Mode
 

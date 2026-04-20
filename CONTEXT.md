@@ -86,7 +86,7 @@ Layer 1 — Data Sources
   worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
 
 Layer 2 — Database
-  SQLite via stackscreener.db    → 13 tables + 2 covering indexes (see schema below)
+  SQLite via stackscreener.db    → 16 tables + 2 covering indexes (see schema below)
   API keys encrypted via Fernet, master key stored in OS keyring
   db.py helpers: get_pending_enrichment, get_pending_history, ipo_checked_today,
                  mark_delisted, get_active_stocks, get_active_event_stocks,
@@ -106,7 +106,11 @@ Layer 4 — Scoring Engine
                                    modes: nsr / thematic / watchlist; exports CSV
 
 Layer 5 — Output (Phase 1: Desktop App)
-  app.py (Textual TUI)           → Phase 1a complete: login, sidebar, screener tab, logistics stub
+  app.py (Textual TUI)           → Phase 1a + 1c complete: login, sidebar, all Research tabs
+                                   (Screener, Calendar, Stock Comparison, Stock Picks, Research Reports)
+                                   Home and Logistics panels are stubs pending Phase 1b/1d
+  news.py                        → podcast RSS + Whisper transcription + WSJ PDF + Yahoo Finance
+                                   news_articles table (16th); ticker signals → source_signals
   pdf_generator.py               → CSV + PDF reports to Results/ directory                [PLANNED]
 
 Layer 6 — Output (Phase 5: Web App)
@@ -126,11 +130,14 @@ StackScreener/
 │   ├── crypto.py                   ← Fernet encryption (OS keyring) + password hashing
 │   ├── seeder.py                   ← one-time schema init + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
-│   ├── screener.py                 ← core scoring engine                        [NEXT]
-│   ├── screener_run.py             ← scan runner / CLI entry point              [NEXT]
+│   ├── screener.py                 ← core scoring engine (8 components + SC/flow overlays)
+│   ├── screener_run.py             ← scan runner / CLI entry point (nsr/thematic/watchlist + CSV)
 │   ├── screener_post_processing.py ← normalized scoring output                  [PLANNED]
-│   ├── supply_chain.py             ← supply chain signal ingestion + sector mapping [PLANNED]
-│   ├── app.py                      ← desktop TUI entry point (Textual)          [PLANNED]
+│   ├── supply_chain.py             ← Tier 2 curated seed + Tier 1 sector matching [PARTIAL]
+│   ├── edgar.py                    ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch) [PARTIAL]
+│   ├── inst_flow.py                ← congressional trades + SEC insider/13F ingestion [PLANNED]
+│   ├── news.py                     ← podcasts (WSJ/MS/MF) + WSJ PDF + Yahoo Finance news [PARTIAL]
+│   ├── app.py                      ← desktop TUI (Textual) — Phase 1a+1c complete
 │   ├── pdf_generator.py            ← PDF reports (fpdf2)                        [PLANNED]
 │   ├── mailer.py                   ← email delivery                             [PLANNED]
 │   └── Results/                    ← scan output (gitignored)
@@ -146,7 +153,14 @@ StackScreener/
 │   ├── event_stocks.sql
 │   ├── calendar_events.sql
 │   ├── source_signals.sql
-│   └── research_reports.sql
+│   ├── research_reports.sql
+│   ├── price_history.sql
+│   ├── edgar_facts.sql
+│   ├── settings.sql
+│   └── news_articles.sql
+├── src/News/
+│   ├── audio/                      ← temp MP3 storage (deleted after transcription, gitignored)
+│   └── pdfs/                       ← WSJ newspaper PDFs (kept, gitignored)
 ├── Mock_up/
 │   ├── *.jpg                       ← UI mockup screenshots
 │   └── Prototype/
@@ -154,7 +168,8 @@ StackScreener/
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← phased development plan
-├── DATABASE.md                     ← full schema map (all 12 tables, FKs, query patterns)
+├── DATABASE.md                     ← full schema map (all 16 tables, FKs, query patterns)
+├── tree.md                         ← annotated file tree with entry points
 ├── requirements.txt
 └── README.md
 ```
@@ -183,6 +198,7 @@ and are created by `db.init_db()`. All access goes through `db.py` only.
 | `price_history` | Daily OHLCV bars + dividends + split factors per stock |
 | `edgar_facts` | XBRL geographic revenue + customer concentration per stock per year |
 | `settings` | Per-user key/value preferences (theme, scan defaults, etc.) |
+| `news_articles` | Headlines, full transcripts, WSJ PDF text — one row per article/episode |
 
 Watchlist query pattern:
 ```sql

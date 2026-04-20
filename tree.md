@@ -4,7 +4,7 @@
 StackScreener/
 ├── src/
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, provider names, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (15 tables, 2 indexes)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (16 tables, 2 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
@@ -14,10 +14,14 @@ StackScreener/
 │   ├── supply_chain.py                   ← Tier 2 curated seed + Tier 1 sector matching       [PARTIAL]
 │   ├── edgar.py                          ← SEC EDGAR XBRL pipeline (CIK seed + facts fetch)   [PARTIAL]
 │   ├── inst_flow.py                      ← congressional trades + SEC insider/13F ingestion   [PLANNED]
-│   ├── app.py                            ← desktop TUI entry point (Textual) — login, sidebar, screener tab
+│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo  [PARTIAL]
+│   ├── app.py                            ← desktop TUI (Textual) — Phase 1a+1c complete: login, sidebar, all Research tabs
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                [PLANNED]
 │   ├── mailer.py                         ← email delivery                                     [PLANNED]
-│   └── Results/                          ← scan output (gitignored)
+│   ├── Results/                          ← scan output (gitignored)
+│   └── News/
+│       ├── audio/                        ← temp MP3 downloads (deleted after transcription, gitignored)
+│       └── pdfs/                         ← WSJ newspaper PDFs (kept, gitignored)
 ├── sql_tables/                           ← canonical SQL table definitions (reference only — schema lives in db.py)
 │   ├── users.sql                         ← user accounts, password hash/salt, admin flag, totp_secret (2FA prep)
 │   ├── watchlists.sql                    ← named watchlists, scoped to user_uid
@@ -32,7 +36,8 @@ StackScreener/
 │   ├── source_signals.sql                ← signals from congressional trades, SEC filings, Yahoo, options flow
 │   ├── research_reports.sql             ← long-form research content tagged by type
 │   ├── price_history.sql               ← daily OHLCV bars + dividends + split factors
-│   └── edgar_facts.sql                 ← XBRL geographic revenue + customer concentration
+│   ├── edgar_facts.sql                 ← XBRL geographic revenue + customer concentration
+│   └── news_articles.sql               ← headlines, transcripts, WSJ PDF text
 ├── man/
 │   └── enricher.1                        ← man page for enricher CLI (install to /usr/share/man/man1/)
 ├── Mock_up/
@@ -48,7 +53,7 @@ StackScreener/
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
 ├── ROADMAP.md                            ← phased development plan with progress tracking
-├── DATABASE.md                           ← full database schema map (all 13 tables, FKs, query patterns)
+├── DATABASE.md                           ← full database schema map (all 16 tables, FKs, query patterns)
 ├── README.md                             ← GitHub landing page
 ├── tree.md                               ← this file
 ├── requirements.txt                      ← Python dependencies
@@ -99,6 +104,10 @@ Tables must be created in this order (FK dependencies):
 | `python src/edgar.py --seed-ciks` | Map all tickers to SEC CIKs (run once) |
 | `python src/edgar.py --fetch-facts` | Pull XBRL geographic revenue + customer concentration |
 | `python src/edgar.py --china-exposure 0.15` | Print stocks with >15% China revenue |
+| `python src/news.py --podcasts` | Fetch + transcribe latest WSJ / Morgan Stanley / Motley Fool episodes |
+| `python src/news.py --watchlist` | Fetch Yahoo Finance news for all watchlist stocks |
+| `python src/news.py --ingest-pdfs` | Ingest all WSJ newspaper PDFs in `src/News/pdfs/` |
+| `python src/news.py --wsj-pdf PATH` | Ingest a specific WSJ newspaper PDF |
 | `python src/screener_run.py` | Run a full NSR scan — scores all active stocks |
 | `python src/screener_run.py --mode thematic` | Supply-chain-aware scan (filtered universe) |
 | `python src/screener_run.py --mode watchlist --watchlist "NAME"` | Score only watchlist stocks |

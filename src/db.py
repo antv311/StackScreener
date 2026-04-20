@@ -395,6 +395,20 @@ def init_db() -> None:
                 fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(stock_uid, fact_type, period)
             );
+
+            CREATE TABLE IF NOT EXISTS news_articles (
+                article_uid  INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_uid    INTEGER REFERENCES stocks(stock_uid),
+                source       TEXT NOT NULL,
+                headline     TEXT,
+                summary      TEXT,
+                body         TEXT,
+                url          TEXT,
+                published_at TEXT,
+                sentiment    REAL,
+                fetched_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source, url)
+            );
         """)
         _migrate_db(conn)
         _debug("init_db complete")
@@ -1077,3 +1091,66 @@ def get_dividend_history(stock_uid: int) -> list[dict]:
         "SELECT date, dividend FROM price_history WHERE stock_uid = ? AND dividend > 0 ORDER BY date ASC",
         (stock_uid,),
     )
+
+
+# ── News Articles ──────────────────────────────────────────────────────────────
+
+def upsert_news_article(data: dict) -> int:
+    """Insert or update a news article keyed on (source, url). Returns article_uid."""
+    sql, params = _build_upsert_sql(
+        "news_articles", data,
+        ("source", "url"),
+        pk="article_uid",
+    )
+    return execute(sql, params)
+
+
+def get_news_articles(source: str | None = None, limit: int = 50) -> list[dict]:
+    sql = "SELECT * FROM news_articles"
+    params: tuple = ()
+    if source is not None:
+        sql += " WHERE source = ?"
+        params = (source,)
+    return query(sql + " ORDER BY published_at DESC LIMIT ?", params + (limit,))
+
+
+def get_news_articles_for_stock(stock_uid: int, limit: int = 20) -> list[dict]:
+    return query(
+        "SELECT * FROM news_articles WHERE stock_uid = ? ORDER BY published_at DESC LIMIT ?",
+        (stock_uid, limit),
+    )
+
+
+def get_all_tickers() -> frozenset[str]:
+    """Return all active ticker symbols as a frozenset — used for mention detection."""
+    rows = query("SELECT ticker FROM stocks WHERE delisted = 0")
+    return frozenset(r["ticker"] for r in rows)
+
+
+def get_watched_tickers() -> list[str]:
+    """Return tickers for all stocks currently on a watchlist."""
+    rows = query(
+        "SELECT ticker FROM stocks WHERE is_watched = 1 AND delisted = 0 ORDER BY ticker"
+    )
+    return [r["ticker"] for r in rows]
+
+
+def get_stocks_by_tickers(tickers: list[str]) -> dict[str, dict]:
+    """Return {ticker: stock} for all given tickers present in the DB."""
+    if not tickers:
+        return {}
+    placeholders = ", ".join("?" * len(tickers))
+    rows = query(
+        f"SELECT * FROM stocks WHERE ticker IN ({placeholders}) AND delisted = 0",
+        tuple(tickers),
+    )
+    return {r["ticker"]: r for r in rows}
+
+
+def get_news_article_urls(source: str) -> set[str]:
+    """Return set of all stored URLs for a given news source — used for deduplication."""
+    rows = query(
+        "SELECT url FROM news_articles WHERE source = ? AND url IS NOT NULL",
+        (source,),
+    )
+    return {r["url"] for r in rows}

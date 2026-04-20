@@ -106,6 +106,32 @@ EDGAR_STALENESS_DAYS: int   = 90    # re-fetch XBRL facts quarterly
 FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
 FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"
 
+# ── News Aggregation ───────────────────────────────────────────────────────────
+NEWS_AUDIO_DIR:      str = "src/News/audio"   # temp MP3 storage — deleted after transcription
+NEWS_PDF_DIR:        str = "src/News/pdfs"    # WSJ newspaper PDFs — kept
+NEWS_WHISPER_MODEL:  str = "base"             # base | small | medium | large
+NEWS_MAX_EPISODES:   int = 3                  # episodes per source per run
+NEWS_TICKER_MIN_LEN: int = 2
+NEWS_TICKER_MAX_LEN: int = 5
+
+NEWS_SOURCE_WSJ_PODCAST:    str = "wsj_podcast"
+NEWS_SOURCE_WSJ_PDF:        str = "wsj_pdf"
+NEWS_SOURCE_MORGAN_STANLEY: str = "morgan_stanley_podcast"
+NEWS_SOURCE_MOTLEY_FOOL:    str = "motley_fool_podcast"
+NEWS_SOURCE_YAHOO_FINANCE:  str = "yahoo_finance_news"
+
+NEWS_SIGNAL_TRANSCRIPT_MENTION: str = "transcript_mention"
+NEWS_SIGNAL_NEWS_HEADLINE:      str = "news_headline"
+
+# Podcast RSS feeds — verify these against each show's current feed before first run.
+# To find a feed: open the show in Apple Podcasts → share → copy RSS link.
+WSJ_PODCAST_FEEDS: list[str] = [
+    "https://feeds.simplecast.com/qm_9xx0g",  # The Journal (WSJ)
+    "https://feeds.simplecast.com/7HRHEbex",  # What's News (WSJ)
+]
+MORGAN_STANLEY_PODCAST_FEED: str = "https://feeds.megaphone.fm/MSFS8299469162"  # Thoughts on the Market
+MOTLEY_FOOL_PODCAST_FEED:    str = "https://feeds.megaphone.fm/foolmoneypodcast"  # Motley Fool Money
+
 # ── Attribution ────────────────────────────────────────────────────────────────
 DEFAULT_AUTHOR: str = "StackScreener"
 

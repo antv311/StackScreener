@@ -1,6 +1,6 @@
 # StackScreener
 
-A thematic, supply-chain-aware stock and ETF screener built on Python 3.14.2.
+A thematic, supply-chain-aware stock screener built from scratch on Python 3.14.2.
 
 StackScreener detects geopolitical supply chain disruptions, maps them to affected industries,
 runs fundamental screening against that universe, and surfaces the companies best positioned
@@ -17,10 +17,16 @@ rotates toward gap-filler companies. StackScreener automates that process:
 Disruption detected → Affected sectors identified → Fundamentals screened → Ranked output
 ```
 
-Signal sources layered into the composite score:
-- **Fundamentals** — EV/Revenue, P/E, EV/EBITDA, profit margin, PEG, debt/equity, CFO ratio, Altman Z
-- **Supply chain signals** — active disruption events mapped to GICS sectors
-- **Institutional flow** — congressional trades (Quiver Quant), dark pool / options flow (Unusual Whales) *(planned)*
+Signal layers in the composite score:
+
+| Layer | Source | Status |
+|---|---|---|
+| **EV/Revenue, P/E, EV/EBITDA, Margin, PEG, D/E** | yfinance fundamentals | ✅ Live |
+| **Supply chain signal** | Curated event → sector mapping (Tier 2) | ✅ Live |
+| **EDGAR geographic revenue** | SEC XBRL API — China/US/Europe exposure | ✅ Live |
+| **Congressional trades** | Senate/House Stock Watcher (free APIs) | Planned Phase 3 |
+| **SEC insider filings** | EDGAR Form 4 + 13F (free) | Planned Phase 3 |
+| **News aggregation** | Reuters RSS, Yahoo Finance, WSJ PDF | Planned Phase 2d |
 
 ---
 
@@ -30,9 +36,9 @@ Three-section desktop TUI built with [Textual](https://github.com/Textualize/tex
 
 | Section | What's Here |
 |---|---|
-| **Home** | Market heatmap color-coded by % change, sized by market cap. Index selector. |
+| **Home** | Live database stats + last scan summary (heatmap in Phase 1b) |
 | **Research** | Screener · Calendar · Stock Comparison · Stock Picks · Research Reports |
-| **Logistics** | World map with live disruption pins. Click a pin to filter the impact table. |
+| **Logistics** | Active supply chain events table (interactive world map in Phase 1d) |
 
 Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up/).
 
@@ -44,24 +50,29 @@ Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up
 |---|---|
 | Language | Python 3.14.2 |
 | Data | yfinance, yahooquery |
-| Technical analysis | pandas-ta (installed `--no-deps`) |
-| Database | SQLite via `db.py` |
+| Database | SQLite — 16 tables, all access via `db.py` |
 | Encryption | cryptography (Fernet) + keyring (OS keyring) |
-| Terminal UI | Textual *(planned)* |
-| PDF reports | fpdf2 *(planned)* |
+| Terminal UI | Textual 8.x |
+| PDF reports | fpdf2 *(Phase 1f)* |
+| SEC EDGAR | requests (XBRL JSON API, no key required) |
 | FX conversion | CurrencyConverter |
 
 ---
 
 ## Project Status
 
-**Phase 0 — backend foundation complete.**
+**Phase 0 complete. Phase 1a and 1c complete.**
 
-- Database layer (`db.py`) — 12 tables, full CRUD, encrypted API key storage
-- Encryption (`crypto.py`) — Fernet via OS keyring, PBKDF2 password hashing
-- Data pipeline — `seeder.py` seeds the full NYSE/NASDAQ universe; `enricher.py` fills in fundamentals in the background
-
-**Up next:** scoring engine (`screener.py` + `screener_run.py`)
+| Phase | Status | What it covers |
+|---|---|---|
+| Phase 0 — Foundation | ✅ Complete | DB (16 tables), enricher, seeder, scoring engine, scan runner |
+| Phase 1a — App Shell | ✅ Complete | Textual TUI, login, sidebar navigation, settings table |
+| Phase 1b — Home Screen | 🔲 Next | Market heatmap, index selector |
+| Phase 2d — News Aggregation | 🔶 Partial | WSJ/MS/MF podcasts + WSJ PDF + Yahoo Finance |
+| Phase 1c — Research Tabs | ✅ Complete | Screener, Calendar, Comparison, Stock Picks, Research Reports |
+| Phase 1d — Logistics | 🔲 Planned | Interactive world map with disruption pins |
+| Phase 2 — Supply Chain Engine | 🔲 Planned | EDGAR LLM, news aggregation, thematic scoring |
+| Phase 3 — Institutional Flow | 🔲 Planned | Congressional trades, insider filings, options flow |
 
 See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 
@@ -69,68 +80,79 @@ See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 
 ## Setup
 
-> Requires Python 3.14.2. Some dependencies (numpy, pandas, matplotlib, psutil) must be
-> compiled from source on Python 3.14. On Windows, use the
-> **x64 Native Tools Command Prompt for VS 2022**.
+> Requires Python 3.14.2. Some dependencies (numpy, pandas) must be compiled from source
+> on Python 3.14. On Windows, use the **x64 Native Tools Command Prompt for VS 2022**.
 
 ```bash
-# Create venv
-python -m venv venv_ss
-source venv_ss/bin/activate   # Windows: venv_ss\Scripts\activate
+# Create and activate venv
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # macOS/Linux
 
-# Install C-extension build tools (Windows — Chocolatey)
+# Install C-extension build tools (Windows — Chocolatey, one-time)
 # choco install pkgconfiglite
 
 # Install dependencies
 pip install -r requirements.txt
-pip install pandas-ta --no-deps
+pip install pandas-ta --no-deps   # must be --no-deps (no numba on 3.14)
 ```
 
 ---
 
-## Database Initialization
+## Quick Start
 
 ```bash
-# Initialize schema and seed default admin user only (safe to run first to verify)
+# 1 — Initialize DB schema + default admin user
 python src/seeder.py --schema-only
 
-# Fetch full NYSE + NASDAQ universe (~8,000+ tickers)
+# 2 — Seed full NYSE/NASDAQ universe (~6,900 tickers)
 python src/seeder.py
 
-# Test with a small batch first
-python src/seeder.py --limit 50
-```
-
-Default login after seeding: **admin / admin** — you will be prompted to change this on first launch.
-
----
-
-## Data Enrichment
-
-The seeder populates ticker symbols and prices. Full fundamentals are filled in by the enricher:
-
-```bash
-# Run enrichment (processes all unenriched stocks, 0.5s between requests)
+# 3 — Enrich fundamentals (runs until all stocks are up to date)
 python src/enricher.py
+python src/enricher.py --limit 50   # test run — 50 stocks only
 
-# Test run — enrich 20 stocks then stop
-python src/enricher.py --limit 20
+# 4 — Run a scan
+python src/screener_run.py                            # full NSR scan
+python src/screener_run.py --mode thematic            # supply-chain filtered
+python src/screener_run.py --limit 500 --top 25       # quick test run
 
-# Check for upcoming IPOs only (also runs automatically at the start of each enricher run)
-python src/enricher.py --ipo-only
+# 5 — Launch the TUI
+python src/app.py
 ```
 
-The enricher is safe to kill and restart — progress is committed per stock.
+Default login after seeding: **admin / admin** — you will be forced to change this on first launch.
 
 ---
 
-## Running a Scan
+## EDGAR Supply Chain Data
 
 ```bash
-python src/screener_run.py
+# Map all tickers to SEC CIKs (run once after seeding)
+python src/edgar.py --seed-ciks
+
+# Pull geographic revenue breakdown (China/US/Europe) for all stocks
+python src/edgar.py --fetch-facts
+python src/edgar.py --fetch-facts --limit 100   # test run
+
+# Find stocks with >15% China revenue exposure
+python src/edgar.py --china-exposure 0.15
 ```
 
-Scan output is written to `Results/<scan_mode>/<datetime>/` (gitignored).
+---
+
+## Supply Chain Seeding
+
+```bash
+# Seed 6 curated supply chain scenarios (Taiwan Strait, Red Sea, etc.)
+python src/supply_chain.py --seed-tier2
+
+# List all active events
+python src/supply_chain.py --list-events
+
+# Show sector-match candidates for an event
+python src/supply_chain.py --candidates 1
+```
 
 ---
 
@@ -140,21 +162,25 @@ Scan output is written to `Results/<scan_mode>/<datetime>/` (gitignored).
 StackScreener/
 ├── src/
 │   ├── screener_config.py      ← all constants, weights, thresholds, status strings
-│   ├── db.py                   ← SQLite layer (all DB access here)
-│   ├── crypto.py               ← encryption + password hashing
-│   ├── seeder.py               ← one-time DB init + universe fetch
-│   ├── enricher.py             ← background fundamentals worker
-│   ├── screener.py             ← scoring engine           [next]
-│   ├── screener_run.py         ← CLI entry point          [next]
-│   ├── supply_chain.py         ← disruption ingestion     [planned]
-│   ├── app.py                  ← Textual TUI              [planned]
-│   ├── pdf_generator.py        ← PDF reports              [planned]
-│   └── mailer.py               ← email delivery           [planned]
-├── sql_tables/                 ← canonical SQL table definitions
+│   ├── db.py                   ← SQLite layer (16 tables, all DB access here)
+│   ├── crypto.py               ← Fernet encryption + PBKDF2 password hashing
+│   ├── seeder.py               ← one-time DB init + NYSE/NASDAQ universe fetch
+│   ├── enricher.py             ← background fundamentals worker + IPO calendar
+│   ├── screener.py             ← scoring engine (8 components + SC/flow overlays)
+│   ├── screener_run.py         ← CLI scan runner (nsr/thematic/watchlist + CSV)
+│   ├── supply_chain.py         ← Tier 2 curated seed + Tier 1 sector matching
+│   ├── edgar.py                ← SEC EDGAR XBRL pipeline
+│   ├── news.py                 ← podcasts (WSJ/MS/MF) + WSJ PDF + Yahoo Finance news
+│   ├── app.py                  ← Textual TUI (login, sidebar, all Research tabs + Settings)
+│   ├── pdf_generator.py        ← PDF reports [planned]
+│   └── mailer.py               ← email delivery [planned]
+├── sql_tables/                 ← canonical SQL table definitions (reference)
 ├── Mock_up/                    ← UI mockups + HTML prototype
-├── CONTEXT.md                  ← full project context (read first)
-├── CLAUDE.md                   ← coding conventions
-├── ROADMAP.md                  ← phased development plan
+├── man/                        ← man pages (enricher.1)
+├── CONTEXT.md                  ← full project context (read at session start)
+├── CLAUDE.md                   ← coding conventions for Claude Code
+├── ROADMAP.md                  ← phased development plan with progress tracking
+├── DATABASE.md                 ← full schema map (all 16 tables, FKs, query patterns)
 └── requirements.txt
 ```
 

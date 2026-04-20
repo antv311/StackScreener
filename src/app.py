@@ -26,7 +26,13 @@ from textual.widgets import (
 )
 
 import db
-from screener_config import DEBUG_MODE
+from screener_config import (
+    DEBUG_MODE,
+    NEWS_WHISPER_MODEL,
+    WSJ_PODCAST_FEEDS,
+    MORGAN_STANLEY_PODCAST_FEED,
+    MOTLEY_FOOL_PODCAST_FEED,
+)
 
 # ── Formatting helpers ─────────────────────────────────────────────────────────
 
@@ -256,6 +262,7 @@ class Sidebar(Vertical):
         yield NavItem("  HOME",      "home",      id="nav-home")
         yield NavItem("  RESEARCH",  "research",  id="nav-research")
         yield NavItem("  LOGISTICS", "logistics", id="nav-logistics")
+        yield NavItem("  SETTINGS",  "settings",  id="nav-settings")
         user = getattr(self.app, "current_user", None)
         name = (user.get("display_name") or user.get("username")) if user else ""
         yield Label(f"  {name}", id="sidebar-user")
@@ -263,7 +270,9 @@ class Sidebar(Vertical):
     def set_active(self, section: str) -> None:
         for item in self.query(NavItem):
             item.remove_class("active")
-        self.query_one(f"#nav-{section}", NavItem).add_class("active")
+        nav = self.query(f"#nav-{section}")
+        if nav:
+            nav.first(NavItem).add_class("active")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -925,6 +934,71 @@ class LogisticsPanel(ScrollableContainer):
             )
 
 
+# ── Settings panel ────────────────────────────────────────────────────────────
+
+class SettingsPanel(Vertical):
+    CSS = """
+    SettingsPanel { padding: 2 3; height: 1fr; overflow-y: auto; }
+    .panel-title  { text-style: bold; color: $primary; margin-bottom: 1; }
+    .section-title { text-style: bold; color: $accent; margin-top: 2; margin-bottom: 0; }
+    .setting-label { color: $text-muted; margin-bottom: 0; margin-top: 1; }
+    .setting-input { margin-bottom: 0; }
+    .setting-note  { color: $text-muted; margin-bottom: 1; text-style: italic; }
+    #settings-status { margin-top: 1; height: 1; }
+    #save-btn { width: 22; margin-top: 2; }
+    """
+
+    _FEED_FIELDS: list[tuple[str, str]] = [
+        ("wsj_podcast_feed_1",  "WSJ — The Journal"),
+        ("wsj_podcast_feed_2",  "WSJ — What's News"),
+        ("morgan_stanley_feed", "Morgan Stanley — Thoughts on the Market"),
+        ("motley_fool_feed",    "Motley Fool Money"),
+        ("whisper_model",       "Whisper Model  (base / small / medium / large)"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Label("SETTINGS", classes="panel-title")
+        yield Label("News Sources — Podcast RSS Feeds", classes="section-title")
+        yield Label(
+            "Verify URLs via Apple Podcasts → share → copy RSS link before first run.",
+            classes="setting-note",
+        )
+        for key, label in self._FEED_FIELDS:
+            yield Label(label, classes="setting-label")
+            yield Input(placeholder="RSS feed URL or model name", id=f"set-{key}", classes="setting-input")
+        yield Button("Save Settings", variant="primary", id="save-btn")
+        yield Label("", id="settings-status")
+
+    def on_mount(self) -> None:
+        user     = getattr(self.app, "current_user", {})
+        user_uid = user.get("user_uid", 1)
+        saved    = db.get_all_settings(user_uid)
+
+        defaults: dict[str, str] = {
+            "wsj_podcast_feed_1":  WSJ_PODCAST_FEEDS[0] if WSJ_PODCAST_FEEDS else "",
+            "wsj_podcast_feed_2":  WSJ_PODCAST_FEEDS[1] if len(WSJ_PODCAST_FEEDS) > 1 else "",
+            "morgan_stanley_feed": MORGAN_STANLEY_PODCAST_FEED,
+            "motley_fool_feed":    MOTLEY_FOOL_PODCAST_FEED,
+            "whisper_model":       NEWS_WHISPER_MODEL,
+        }
+        for key, _ in self._FEED_FIELDS:
+            self.query_one(f"#set-{key}", Input).value = saved.get(key) or defaults.get(key, "")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save-btn":
+            self._save()
+
+    def _save(self) -> None:
+        user     = getattr(self.app, "current_user", {})
+        user_uid = user.get("user_uid", 1)
+        for key, _ in self._FEED_FIELDS:
+            val = self.query_one(f"#set-{key}", Input).value.strip()
+            db.set_setting(user_uid, key, val)
+        self.query_one("#settings-status", Label).update(
+            "[green]Settings saved.[/green]"
+        )
+
+
 # ── Main screen ────────────────────────────────────────────────────────────────
 
 class MainScreen(Screen):
@@ -932,6 +1006,7 @@ class MainScreen(Screen):
         Binding("1", "section('home')",      "Home"),
         Binding("2", "section('research')",  "Research"),
         Binding("3", "section('logistics')", "Logistics"),
+        Binding("4", "section('settings')",  "Settings"),
         Binding("q", "quit_app",             "Quit"),
     ]
     CSS = """
@@ -947,6 +1022,7 @@ class MainScreen(Screen):
                 HomePanel(id="panel-home"),
                 ResearchPanel(id="panel-research"),
                 LogisticsPanel(id="panel-logistics"),
+                SettingsPanel(id="panel-settings"),
                 id="content",
             ),
         )
@@ -965,7 +1041,7 @@ class MainScreen(Screen):
         self.app.exit()
 
     def _show_section(self, section: str) -> None:
-        for name in ("home", "research", "logistics"):
+        for name in ("home", "research", "logistics", "settings"):
             self.query_one(f"#panel-{name}").display = (name == section)
         self.query_one(Sidebar).set_active(section)
 

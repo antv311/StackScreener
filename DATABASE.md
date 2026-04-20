@@ -2,6 +2,7 @@
 
 All tables live in `stackscreener.db`. All access goes through `db.py` only.
 Schema is created by `db.init_db()`. Migrations (new columns) run automatically on startup.
+**16 tables total. 2 covering indexes.**
 
 ---
 
@@ -86,6 +87,7 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `is_watched` | INTEGER | 1 = on watchlist |
 | `ticker` | TEXT | UNIQUE with exchange |
 | `exchange` | TEXT | NASDAQ / NYSE / NYSE ARCA |
+| `company_name` | TEXT | yfinance `shortName` — used in UI display |
 | `market_index` | TEXT | |
 | `sector`, `industry` | TEXT | GICS |
 | `country` | TEXT | |
@@ -362,6 +364,30 @@ df = yf.Ticker('AAPL').history(period='5y')
 
 ---
 
+### settings
+Per-user key/value preferences. Persisted across sessions. All settings are user-scoped.
+
+| Column | Type | Notes |
+|---|---|---|
+| `setting_uid` | INTEGER PK | |
+| `user_uid` | INTEGER FK → users | NOT NULL — all settings belong to a user |
+| `key` | TEXT | setting name, UNIQUE with user_uid |
+| `value` | TEXT | stored as string; parse in caller |
+| `updated_at` | TEXT | |
+
+```python
+# Read a setting (with default):
+db.get_setting(user_uid, "theme", default="dark")
+
+# Write/update a setting:
+db.set_setting(user_uid, "scan_top_n", "25")
+
+# Read all settings for a user:
+db.get_all_settings(user_uid)  # → {"theme": "dark", "scan_top_n": "25", ...}
+```
+
+---
+
 ## Key Query Patterns
 
 ```sql
@@ -410,4 +436,36 @@ SELECT date, close, volume
 FROM price_history
 WHERE stock_uid = ? AND date >= date('now', '-1 year')
 ORDER BY date ASC;
+
+-- Recent news for a stock
+SELECT headline, source, published_at FROM news_articles
+WHERE stock_uid = ? ORDER BY published_at DESC LIMIT 20;
+```
+
+---
+
+### news_articles
+Headlines, transcripts, and article text from all news sources. One row per article/episode.
+Ticker mentions from each article create rows in `source_signals`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `article_uid` | INTEGER PK | |
+| `stock_uid` | INTEGER FK → stocks | Primary ticker — nullable |
+| `source` | TEXT | `wsj_podcast` · `wsj_pdf` · `morgan_stanley_podcast` · `motley_fool_podcast` · `yahoo_finance_news` |
+| `headline` | TEXT | Article headline or podcast episode title |
+| `summary` | TEXT | Short description or RSS teaser |
+| `body` | TEXT | Full transcript or article text |
+| `url` | TEXT | Audio URL, article URL, or absolute PDF path — UNIQUE with source |
+| `published_at` | TEXT | |
+| `sentiment` | REAL | NULL until sentiment scoring added |
+| `fetched_at` | TEXT | |
+
+```python
+# Store an article:
+db.upsert_news_article({"source": "wsj_podcast", "headline": "...", "url": "...", ...})
+
+# Fetch recent articles:
+db.get_news_articles(source="wsj_pdf", limit=10)
+db.get_news_articles_for_stock(stock_uid, limit=20)
 ```
