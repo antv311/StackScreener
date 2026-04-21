@@ -1,223 +1,411 @@
 # StackScreener — Development Roadmap
 
-**Current Status:** Phase 0, 1a, 1c complete. Phase 2b (EDGAR), 2d (news), 2f (thematic scan) complete. Next: Phase 3 (Form 4 insider trades, 13F, options flow).
 **Last updated:** April 2026
 
 ---
 
-## Guiding Principle
+## Architecture
 
-Build the desktop app first. Validate the scoring engine and supply chain logic locally before
-adding the complexity of a web server, authentication, and deployment. A working CLI/TUI app
-is a real product. A half-finished web app is a liability.
+StackScreener is structured as four independent projects that share a common core
+(`db.py`, `screener_config.py`, `crypto.py`, `screener.py`). Each project has its own
+TUI entry point and backlog. Enhancements drop into the relevant project's backlog
+without touching the others.
 
----
+```
+┌─────────────────────────┐   ┌─────────────────────────┐
+│  P1 — Data Scraper TUI  │   │  P2 — DB & Server TUI   │
+│  scraper_app.py         │   │  db_app.py               │
+└────────────┬────────────┘   └────────────┬────────────┘
+             │                             │
+             ▼                             ▼
+        ┌────────────────────────────────────┐
+        │         Shared Core                │
+        │  db.py · screener_config.py        │
+        │  crypto.py · screener.py           │
+        │  screener_run.py                   │
+        └─────────────┬──────────────────────┘
+                      │
+        ┌─────────────┴──────────────────────┐
+        │                                    │
+        ▼                                    ▼
+┌───────────────────┐              ┌─────────────────────┐
+│  P3 — Bloomberg   │              │  P4 — Web Server    │
+│  TUI  (app.py)    │              │  web/  (Phase 5+)   │
+└───────────────────┘              └─────────────────────┘
+```
 
-## Phase 0 — Environment & Foundation ✅ COMPLETE
-
-- [x] Python 3.14.2 venv at `venv/`, C extensions compiled, all deps installed
-- [x] `screener_config.py` — all constants, weights, thresholds, status strings, provider names
-- [x] `db.py` — full SQLite layer: 16 tables, 2 covering indexes, CRUD helpers, upsert builders, batch ops
-- [x] `crypto.py` — Fernet encryption via OS keyring + PBKDF2 password hashing
-- [x] `seeder.py` — schema init, default admin user, NYSE/NASDAQ universe fetch (6,924 stocks)
-- [x] `enricher.py` — rate-limited fundamentals worker + daily IPO calendar check + 5y price history
-- [x] Full database seeded and enriched — 6,910 stocks with fundamentals + price history
-- [x] `screener.py` — scoring engine (EV/R, PE, EV/EBITDA, margin, PEG, D/E, supply chain, inst flow)
-- [x] `screener_run.py` — scan runner + CLI entry point (nsr / thematic / watchlist modes + CSV export)
-
-**Exit criteria met:** `python screener_run.py` completes a full scan, saves to DB, outputs CSV. ✅
-
----
-
-## Phase 1 — Desktop App (Textual TUI)
-
-Turn the screener into a usable standalone desktop application matching the agreed UI mockup.
-
-### 1a — Core App Shell ✅ COMPLETE
-
-- [x] Create `app.py` as the Textual TUI entry point
-- [x] Three-section sidebar: Home / Research / Logistics
-- [x] Login screen — enforce password change for admin on first run
-- [x] Config management: load/save user settings via `settings` table
-- [x] Graceful error handling and user-friendly error messages
-
-### 1b — Home Screen
-
-- [ ] Full-width market heatmap (tiles color-coded by % change, sized by market cap)
-- [ ] Index selector at bottom: S&P 500 / DOW / Russell 1000 / Recommended / All
-
-### 1c — Research Screen (5 sub-tabs) ✅ COMPLETE
-
-- [x] **Screener** — filter dropdowns (Exchange/Sector/MCap/P/E/Signal); score bar; in-memory filtering; 200-row cap
-- [x] **Calendar** — 7-day weekly grid (DayCell per day); color-coded event chips; week navigation; filter buttons; detail table
-- [x] **Stock Comparison** — 4 ticker inputs; DB lookup; Valuation/Income/Risk sections; green ▲ best / red ▼ worst per row
-- [x] **Stock Picks** — collapsible Textual cards for top 15 scan results; source signal breakdown (populated in Phase 3)
-- [x] **Research Reports** — scrollable tagged cards from `research_reports` table; empty-state with Phase 2 context
-
-### 1d — Logistics Screen
-
-- [ ] World map with pulsing pins for active supply chain disruptions (color = severity)
-- [ ] Click pin → filter table to that event
-- [ ] Table: Region/Event | Impacted Companies | Cannot Provide | Will Redirect To | Severity
-
-### 1e — Watchlist Management
-
-- [ ] Add / remove symbols from watchlist via app
-- [ ] View watchlist with latest scores and prices
-- [ ] Import watchlist from CSV
-- [ ] Persist watchlist to `db.py` (user-scoped via `user_uid`)
-
-### 1f — Results & History
-
-- [ ] View past scan results from DB
-- [ ] Side-by-side diff of two scan runs
-- [ ] Export results to CSV from within the app
-
-**Exit criteria:** A non-technical user can run a scan, browse results, and manage a watchlist
-entirely from the TUI without touching any Python files.
+**Guiding principle:** Build and validate locally first. A working TUI is a real product.
+A half-finished web app is a liability.
 
 ---
 
-## Phase 2 — Supply Chain Signal Engine
+## Shared Core — Status ✅ COMPLETE
 
-Add the core intelligence layer that makes StackScreener different from any other screener.
+The foundation all four projects depend on.
 
-### 2a — Disruption Events (partial ✅)
+- [x] Python 3.14.2 venv, C extensions compiled, all deps installed
+- [x] `screener_config.py` — all constants, weights, thresholds, status strings
+- [x] `db.py` — SQLite layer: 16 tables, 8 covering indexes, CRUD helpers, batch ops
+- [x] `crypto.py` — Fernet encryption (OS keyring) + PBKDF2 password hashing
+- [x] `seeder.py` — schema init, admin user, NYSE/NASDAQ universe (6,924 stocks)
+- [x] `enricher.py` — rate-limited fundamentals worker + IPO calendar + 5y price history
+- [x] `screener.py` — scoring engine (EV/R, PE, EV/EBITDA, margin, PEG, D/E, SC, flow)
+- [x] `screener_run.py` — scan runner (nsr / thematic / watchlist modes + CSV export)
 
-- [x] `supply_chain_events` table — schema, CRUD helpers, sector/region/severity fields
-- [x] `event_stocks` junction table — role (impacted/beneficiary), cannot_provide, will_redirect
-- [x] `supply_chain.py --seed-tier2` — 6 curated events, 31 company links seeded
-- [x] `db.get_sector_candidates()` — Tier 1 broad sector matching
-- [ ] Automated ingestion of new disruption events (worldmonitor-osint or equivalent)
-- [ ] Automated refresh on app startup (or on demand)
+---
 
-### 2b — EDGAR XBRL Data Pipeline (partial ✅)
+---
+
+# Project 1 — Data Scraper
+
+**Entry point:** `src/scraper_app.py`
+**Owns:** `enricher.py`, `edgar.py`, `news.py`, `supply_chain.py`, `inst_flow.py`
+**Purpose:** All data engineering — fetching, transcribing, scraping, LLM extraction,
+and enrichment. Operators run this to keep the database current and add new sources.
+
+---
+
+## P1 — Status
+
+| Module | Status |
+|---|---|
+| `enricher.py` — fundamentals + IPO calendar + price history | ✅ Complete |
+| `edgar.py` — CIK seed + XBRL geographic revenue + 10-K text flags | ✅ Complete |
+| `news.py` — WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Complete |
+| `supply_chain.py` — 6 curated events, 37 company links, Tier 1 matching | ✅ Complete |
+| `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Built (Phase 3 wiring) |
+| SEC EDGAR Form 4 — insider buy/sell filings | 🔲 Next |
+| SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
+| yfinance options chain — basic options flow | 🔲 Planned |
+| EDGAR LLM extraction — Llama 3.1 70B via Ollama (P40 GPU) | 🔲 Pending GPU |
+| Automated supply chain event ingestion | 🔲 Planned |
+| `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
+
+---
+
+## P1 — Completed Work
+
+### Supply Chain Signal Engine
+
+- [x] `supply_chain_events` + `event_stocks` tables — schema, CRUD, role/severity/confidence
+- [x] `supply_chain.py --seed-tier2` — 6 curated events (Taiwan Strait, Red Sea, etc.)
+- [x] Tier 1 broad sector matching via `db.get_sector_candidates()`
+- [x] Thematic scan mode — filters universe to disruption-relevant sectors
+- [x] China revenue dampening — high EDGAR China revenue dampens beneficiary scores
+- [x] Event context output — event name shown alongside SC score in scan results
+
+### EDGAR XBRL Pipeline
 
 - [x] `edgar_facts` table — geographic revenue + customer concentration per stock per year
 - [x] `stocks.cik` — SEC CIK mapping for every ticker
-- [x] `edgar.py --seed-ciks` — map all 6,900 tickers to SEC CIKs
-- [x] `edgar.py --fetch-facts` — pull XBRL geographic revenue + customer concentration
-- [x] `db.get_stocks_by_china_exposure()` — query stocks by China revenue threshold
-- [x] Wire geographic exposure into supply chain scoring (high China revenue dampens beneficiary score)
+- [x] `edgar.py --seed-ciks` — maps all 6,900 tickers to SEC CIKs
+- [x] `edgar.py --fetch-facts` — pulls XBRL geographic revenue + customer concentration
+- [x] `edgar.py --fetch-filings` — 10-K text: 8 risk flags + customer % regex extraction
+- [x] `db.get_stocks_by_china_exposure()` — query by China revenue threshold
+- [x] `db.get_china_revenue_map()` — bulk map for scoring
+- [x] `db.get_active_china_events()` — active China/Taiwan events for dampening logic
 
-### 2c — EDGAR LLM Extraction (pending P40 GPU)
+### News Aggregation
 
-- [ ] Run Llama 3.1 70B (4-bit quant) locally via Ollama on NVIDIA P40 (24GB VRAM)
-- [ ] `edgar.py --extract-relationships` — feed 10-K Item 1A to LLM, extract supplier/customer links
-- [ ] Auto-populate `event_stocks` with medium-confidence relationships from filings
-- [ ] Zero API cost; runs entirely local
-
-### 2d — News Aggregation ✅ COMPLETE
-
-Module: `src/news.py` — built
-Table: `news_articles` (16th table) — built
-Directories: `src/News/audio/` (temp MP3), `src/News/pdfs/` (WSJ PDFs kept)
-Dependencies: `torch` (custom cp314 wheel), `openai-whisper`, `pypdf` (already present)
-
-- [x] **WSJ podcasts** — RSS → MP3 → Whisper transcription; uses embedded transcript tag if present
-- [x] **Morgan Stanley "Thoughts on the Market"** — same RSS + Whisper pipeline
-- [x] **Motley Fool Money** — same RSS + Whisper pipeline
-- [x] **Yahoo Finance** — `yf.Ticker(ticker).news` per ticker or full watchlist
-- [x] **WSJ newspaper PDF** — `pypdf` text extraction; drop PDF in `src/News/pdfs/`
-- [x] Ticker mention detection — regex against full 6,900-ticker DB set; common words filtered
+- [x] `news.py` — WSJ podcasts (2 feeds), Morgan Stanley, Motley Fool via RSS + Whisper
+- [x] WSJ newspaper PDF ingestion via `pypdf`
+- [x] Yahoo Finance news via `yf.Ticker().news` (per ticker or full watchlist)
+- [x] Ticker mention detection — regex against full 6,900-ticker set, common words filtered
 - [x] Signals stored in `source_signals` (one row per ticker per article)
 - [x] All 7 RSS feed URLs verified live (April 2026)
-- [x] News tab in Research screen — filterable by source, shows headline + ticker
 
-### 2e — Financial Podcast Transcripts ✅ (merged into 2d)
+### Institutional Flow
 
-Covered by `news.py` podcast pipeline above — all three shows use the same RSS + Whisper path.
-
-### 2f — Thematic Scan Mode ✅ COMPLETE
-
-- [x] `--mode thematic` — filters universe to disruption-relevant sectors (Tier 1 sector match + Tier 2 curated beneficiary links)
-- [x] Supply chain signal score layered on top of fundamental score; China revenue dampens beneficiary scores when China events active
-- [x] Output shows event name alongside SC score for each beneficiary pick
-
-**Exit criteria:** Given a real supply chain event, StackScreener surfaces a ranked list of
-companies positioned to benefit, with geographic exposure data and news signals attached.
+- [x] `inst_flow.py` — Senate Stock Watcher API (free, no key)
+- [x] `inst_flow.py` — House Stock Watcher API (free, no key)
+- [x] Signals stored in `source_signals` + wired into composite score
 
 ---
 
-## Phase 3 — Institutional Flow Integration
+## P1 — Next Up
 
-Layer in free public smart-money signals to validate or strengthen supply chain picks.
-Quiver Quant and Unusual Whales were dropped — too expensive. Replaced with free public sources.
+### SEC EDGAR Form 4 — Insider Trades
 
-- [x] Integrate **Senate Stock Watcher API** (congressional trades — Senate, free) — `inst_flow.py`
-- [x] Integrate **House Stock Watcher API** (congressional trades — House, free) — `inst_flow.py`
-- [x] Store signals in `source_signals` table via `db.py`
-- [x] Incorporate flow signals into final ranking (configurable weight in `screener_config.py`)
-- [ ] Integrate **SEC EDGAR Form 4** (insider buy/sell filings, free public API)
-- [ ] Integrate **SEC EDGAR Form 13F** (institutional holdings, free public API)
-- [ ] Integrate **yfinance options chain** (basic options flow, free)
-- [ ] Confluence view: supply chain signal + institutional flow + fundamentals all aligned
+- [ ] `inst_flow.py --form4` — fetch recent Form 4 filings from EDGAR full-text search API
+- [ ] Parse: filer name, issuer ticker, transaction type (buy/sell), shares, price, date
+- [ ] Store in `source_signals` with `signal_type = 'insider_buy'` / `'insider_sell'`
+- [ ] Wire into composite score (configurable weight in `screener_config.py`)
 
-**Exit criteria:** A scan result shows which supply chain picks also have congressional or
-insider buying, with a combined score. No paid API keys required.
+### SEC EDGAR Form 13F — Institutional Holdings
+
+- [ ] `inst_flow.py --form13f` — fetch quarterly 13F filings for top institutions
+- [ ] Track position changes (new position, increased, decreased, exited)
+- [ ] Store in `source_signals` with `signal_type = 'inst_holding_change'`
+
+### yfinance Options Flow
+
+- [ ] `inst_flow.py --options` — pull options chain via `yf.Ticker().options`
+- [ ] Flag unusual call/put volume (>2x 30-day average)
+- [ ] Store in `source_signals` with `signal_type = 'unusual_options'`
+
+### Data Scraper TUI (`scraper_app.py`)
+
+- [ ] Live log tail — enricher, EDGAR, news, inst_flow output streamed in real time
+- [ ] Manual trigger panel — run any pipeline step on demand with configurable args
+- [ ] Source manager — enable/disable sources, edit RSS feed URLs, set rate limits
+- [ ] LLM panel — Ollama model status, GPU memory, trigger `--extract-relationships`
+- [ ] Data debugger — pick any ticker, inspect all DB fields, flag anomalies
+- [ ] Supply chain event editor — add/edit/retire events and company links
+
+**Exit criteria:** An operator can run any enrichment step, inspect the results, and
+debug bad data entirely from the TUI without touching the CLI.
 
 ---
 
-## Phase 4 — Alerts & Automation
+## P1 — Backlog / Enhancements
 
-Make StackScreener run continuously and notify on significant events.
-
-- [ ] Scheduled scans (daily pre-market, configurable)
-- [ ] Alert on: new supply chain event, score threshold crossed, new congressional trade
-- [ ] Email delivery via `mailer.py`
-- [ ] Optional: SMS / webhook alerts
-- [ ] Watchlist price alerts
-
-**Exit criteria:** StackScreener runs unattended overnight and emails a morning briefing.
+- Automated supply chain event ingestion (worldmonitor-osint or news scraping)
+- Automated refresh on app startup or scheduled trigger
+- Reuters RSS feed ingestion
+- Earnings call transcript ingestion (via SEC EDGAR or podcast feeds)
+- Sentiment scoring on news articles (local model, no API cost)
+- Supply chain event confidence scoring using LLM + EDGAR cross-reference
+- TASE and European market supply chain mapping
+- Backtesting: did past supply chain events generate alpha?
 
 ---
 
-## Phase 5 — Web App
+---
 
-Migrate the desktop app to a web interface. By this point the core logic is fully validated.
+# Project 2 — Database & Server
 
-- [ ] FastAPI backend
-- [ ] REST API wrapping scan engine and DB queries
-- [ ] Web dashboard: scan runner, results table, supply chain event feed, watchlist
-- [ ] User authentication (multi-user, 2FA via stored `totp_secret`)
+**Entry point:** `src/db_app.py`
+**Owns:** `db.py` internals, future FastAPI server, API key management
+**Purpose:** Direct database access, query debugging, migration management, and
+(eventually) the REST API server that exposes StackScreener data to external clients.
+
+---
+
+## P2 — Status
+
+| Component | Status |
+|---|---|
+| SQLite layer — 16 tables, 8 indexes, all helpers | ✅ Complete |
+| `db_app.py` — Database TUI | 🔲 Planned |
+| REST API — FastAPI server | 🔲 Phase 5 |
+| Multi-user auth — API keys + JWT | 🔲 Phase 5 |
+
+---
+
+## P2 — Completed Work
+
+- [x] 16-table SQLite schema with FK constraints and `tablename_uid` PK convention
+- [x] 8 covering indexes across hot query paths
+- [x] Fernet-encrypted API key storage via OS keyring
+- [x] PBKDF2-HMAC-SHA256 password hashing (260k iterations, per-user salt)
+- [x] `_migrate_db()` — safe column/index migrations with `try/except OperationalError`
+- [x] `insert_scan_results_batch()` — single-transaction batch insert (6,900 rows)
+- [x] `executemany` pattern for all bulk operations
+
+---
+
+## P2 — Next Up
+
+### Database TUI (`db_app.py`)
+
+- [ ] Interactive SQL shell — type a query, paginated results rendered as DataTable
+- [ ] Table browser — pick any of the 16 tables, page through rows, column filter
+- [ ] Schema viewer — show CREATE TABLE + indexes for any table
+- [ ] Migration runner — show pending migrations, run with confirmation
+- [ ] API key manager — add/rotate/revoke encrypted API keys per user/provider
+- [ ] DB stats dashboard — row counts, DB file size, index usage, last enriched
+- [ ] Log viewer — tail enricher, EDGAR, news logs from within the TUI
+
+### REST API Server (Phase 5)
+
+- [ ] FastAPI application in `web/api/`
+- [ ] Endpoints: `/scan/run`, `/scan/results`, `/stocks/{ticker}`, `/events`, `/watchlist`
+- [ ] JWT authentication wrapping existing `crypto.py` + `users` table
+- [ ] Rate limiting per API key
+- [ ] OpenAPI docs auto-generated
+- [ ] Deploy to Ubuntu (VPS or home server)
+
+**Exit criteria:** Friends can point their own frontend or scripts at the API and get
+live scan results, stock quotes, and supply chain events without running the TUI.
+
+---
+
+## P2 — Backlog / Enhancements
+
+- Query history — save and replay previous SQL queries
+- Export any query result to CSV from within the TUI
+- DB health checks — detect missing indexes, bloated tables, orphaned FKs
+- WebSocket endpoint for live scan progress streaming
+- Plaid integration for live portfolio sync
+- Multi-tenant user management (invite users, assign roles)
+- 2FA enforcement via `totp_secret` column on `users`
+- Webhook alerts — push scan results or SC events to Slack / Discord / custom URL
+
+---
+
+---
+
+# Project 3 — Bloomberg TUI
+
+**Entry point:** `src/app.py`
+**Owns:** All user-facing terminal UI
+**Purpose:** The main product. Navigate scan results, research stocks, monitor supply
+chain events, and manage watchlists from a polished terminal interface.
+
+---
+
+## P3 — Status
+
+| Screen / Tab | Status |
+|---|---|
+| Login screen + forced password change | ✅ Complete |
+| Sidebar navigation (Home / Research / Logistics / Settings) | ✅ Complete |
+| Research — Screener tab | ✅ Complete |
+| Research — Calendar tab | ✅ Complete |
+| Research — Stock Comparison tab | ✅ Complete |
+| Research — Stock Picks tab | ✅ Complete |
+| Research — Research Reports tab | ✅ Complete |
+| Research — News tab | ✅ Complete |
+| Stock Quote Modal (Enter on any row) | ✅ Complete |
+| Home — Market heatmap | 🔲 Next (Phase 1b) |
+| Logistics — Interactive world map | 🔲 Planned (Phase 1d) |
+| Watchlist management | 🔲 Planned (Phase 1e) |
+| Scan results history + diff | 🔲 Planned (Phase 1f) |
+
+---
+
+## P3 — Completed Work
+
+- [x] Textual TUI shell — login, sidebar, panel switching, settings persistence
+- [x] Screener tab — filter dropdowns, score bar, 200-row cap, in-memory filter
+- [x] Calendar tab — 7-day grid, color-coded chips, week navigation, detail table
+- [x] Stock Comparison — 4 tickers, Valuation/Income/Risk sections, ▲/▼ highlights
+- [x] Stock Picks — collapsible cards, per-source signal breakdown
+- [x] Research Reports — tagged cards from `research_reports` table
+- [x] News tab — filterable by source, headline + ticker display
+- [x] Stock Quote Modal — 4 tabs: Overview (40+ fields), Signals, History, News
+  - Trigger: Enter on Screener row; "Open Quote →" button in Stock Picks cards
+  - All data from DB, no network calls on open
+
+---
+
+## P3 — Next Up
+
+### Phase 1b — Home Screen
+
+- [ ] Full-width market heatmap — tiles color-coded by % change, sized by market cap
+- [ ] Click tile → open Stock Quote Modal for that ticker
+- [ ] Index selector: S&P 500 / DOW / Russell 1000 / Watchlist / All
+- [ ] Summary row: gainers count, losers count, flat count, avg score
+
+### Phase 1d — Logistics Screen (world map)
+
+- [ ] ASCII/Unicode world map with region markers for active SC events
+- [ ] Marker color = severity (red=CRITICAL, orange=HIGH, yellow=MEDIUM, blue=LOW)
+- [ ] Click/select region → filter the company table below
+- [ ] Table: Region/Event | Impacted Companies | Cannot Provide | Will Redirect To | Severity
+
+### Phase 1e — Watchlist Management
+
+- [ ] Add / remove symbols from watchlist via the TUI (no CLI needed)
+- [ ] Watchlist tab showing latest scores, prices, and signals
+- [ ] Import watchlist from CSV drag-and-drop or file path input
+- [ ] Watchlist scoped to logged-in user via `user_uid`
+
+### Phase 1f — Results & History
+
+- [ ] Browse all past scan runs — filter by mode, date, score count
+- [ ] Side-by-side diff: two scan runs, highlight movers (rank up/down > 10)
+- [ ] Export current view to CSV from within the app
+
+**Exit criteria:** A non-technical user can run a scan, research any stock, monitor
+supply chain events, and manage a watchlist entirely from the TUI.
+
+---
+
+## P3 — Backlog / Enhancements
+
+- Alerts panel — view triggered alerts (score threshold, SC event, congressional trade)
+- Portfolio tracker — enter holdings, show P&L vs last scan benchmark
+- Sector rotation view — which sectors are gaining/losing score week-over-week
+- Keyboard command palette (`:` to open, type any action)
+- Dark/light theme toggle persisted in `settings` table
+- Print-to-PDF from within the TUI (fpdf2, dumps current view)
+- Confluence view — stocks where SC signal + inst flow + fundamentals all align
+- Backtesting view — replay historical SC events, show what the screener would have surfaced
+
+---
+
+---
+
+# Project 4 — Web Server & Site
+
+**Entry point:** `web/` directory
+**Owns:** FastAPI backend, REST API, and browser-based frontend
+**Status:** 🔲 Planned — begins after Project 2 REST API is stable
+**Prerequisite:** Projects 1–3 fully validated; REST API live from Project 2
+
+---
+
+## P4 — Planned Work
+
+- [ ] FastAPI app in `web/api/` wrapping scan engine and DB helpers
+- [ ] React frontend (based on `StackScreenerCD/` prototype) consuming the REST API
+- [ ] Pages: Home heatmap, Screener, Calendar, Stock Comparison, Stock Picks, Quote
+- [ ] Logistics map (Leaflet.js with D3 overlays)
+- [ ] User auth — login, JWT, 2FA via `totp_secret`
+- [ ] Watchlist sync between TUI and web
 - [ ] Plaid integration for live portfolio sync
 - [ ] Deploy to Ubuntu server
 
-**Exit criteria:** Full feature parity with the desktop app, accessible from a browser.
+**Exit criteria:** Full feature parity with the Bloomberg TUI, accessible from a browser.
+Friends can create accounts and run their own scans.
 
 ---
 
-## Backlog / Nice to Have
+## P4 — Backlog / Enhancements
 
-- Portfolio performance tracking against benchmark
-- Backtesting: would past supply chain events have generated alpha?
-- Sector rotation signals
-- TASE and European market supply chain mapping
-- Integration with news APIs for event detection
-- ML-based sector impact prediction
+- Mobile-responsive layout
+- PWA / home screen install
+- Shareable scan result links (public permalink per scan run)
+- Embeddable supply chain event widget for external sites
+- Email morning briefing (`mailer.py`) — daily scan summary + SC event digest
+- SMS / webhook alerts on score threshold or new SC event
+- Public API tier with rate limiting (friends build their own tools on top)
 
 ---
 
-## Current Blockers / Open Questions
+---
 
-- Supply chain data source TBD: worldmonitor-osint vs paid API vs news scraping
-- Ubuntu deployment environment TBD (VPS, home server, cloud?)
+## Open Questions / Blockers
+
+| Item | Status |
+|---|---|
+| Supply chain event auto-ingestion source | TBD — worldmonitor-osint vs news scraping |
+| NVIDIA P40 GPU arrival | Pending — gates EDGAR LLM extraction (P1) |
+| Ubuntu deployment environment | TBD — VPS, home server, or cloud |
+| REST API authentication design | Deferred to Project 2 |
 
 ---
 
 ## Dependencies Reference
 
-| Package | Purpose | Notes |
+| Package | Purpose | Project |
 |---|---|---|
-| `yfinance` | Price, fundamentals, IPO calendar, options chain | Primary data source |
-| `yahooquery` | Detailed financials | Supplement to yfinance |
-| `pandas-ta` | Technical indicators | Install with `--no-deps` (no numba) |
-| `fpdf2` | PDF report generation | |
-| `CurrencyConverter` | FX conversion | |
-| `textual` | Terminal UI | Phase 1 |
-| `requests` | HTTP fetches | SEC EDGAR, congressional trade APIs |
-| `cryptography` | Fernet encryption | API key storage |
-| `keyring` | OS keyring access | Fernet master key storage |
-| `sqlite3` | DB (stdlib) | No ORM needed |
-| `numpy` | Numerics | Compile from source on Windows |
-| `pandas` | DataFrames | Compile from source on Windows |
+| `yfinance` | Price, fundamentals, IPO calendar, options chain | P1 |
+| `yahooquery` | Detailed financials supplement | P1 |
+| `pandas-ta` | Technical indicators (install `--no-deps`) | P1 |
+| `openai-whisper` | Podcast transcription | P1 |
+| `pypdf` | WSJ PDF text extraction | P1 |
+| `torch` | Whisper backend (custom cp314 wheel) | P1 |
+| `requests` | HTTP — SEC EDGAR, congressional trade APIs | P1 |
+| `textual` | Terminal UI framework | P1, P2, P3 |
+| `cryptography` | Fernet encryption | Shared core |
+| `keyring` | OS keyring — Fernet master key | Shared core |
+| `sqlite3` | Database (stdlib, no ORM) | Shared core |
+| `numpy` | Numerics (compile from source on Windows) | Shared core |
+| `pandas` | DataFrames (compile from source on Windows) | Shared core |
+| `CurrencyConverter` | FX conversion | Shared core |
+| `fpdf2` | PDF report generation | P3 |
+| `fastapi` | REST API server | P2, P4 |
+| `uvicorn` | ASGI server for FastAPI | P2, P4 |

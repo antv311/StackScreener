@@ -25,22 +25,40 @@ Signal layers in the composite score:
 | **Supply chain signal** | Curated event → sector mapping (Tier 2) | ✅ Live |
 | **EDGAR geographic revenue** | SEC XBRL — China/US/Europe exposure + 10-K risk flags | ✅ Live |
 | **News aggregation** | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Live |
-| **Congressional trades** | Senate/House Stock Watcher (free APIs) | ✅ Built — Phase 3 wiring |
-| **SEC insider filings** | EDGAR Form 4 + 13F (free) | Planned Phase 3 |
+| **Congressional trades** | Senate/House Stock Watcher (free APIs) | ✅ Live |
+| **SEC insider filings** | EDGAR Form 4 + 13F (free) | 🔲 Next |
 
 ---
 
-## UI
+## Architecture — Four Projects
+
+StackScreener is structured as four independent projects sharing a common core.
+
+| Project | Entry Point | Status |
+|---|---|---|
+| **P1 — Data Scraper** | `src/scraper_app.py` | Core modules complete; TUI planned |
+| **P2 — Database & Server** | `src/db_app.py` | DB layer complete; TUI + API planned |
+| **P3 — Bloomberg TUI** | `src/app.py` | ✅ Active — main user interface |
+| **P4 — Web Server & Site** | `web/` | Planned after P2 REST API is stable |
+
+See [`ROADMAP.md`](ROADMAP.md) for per-project status tables and enhancement backlogs.
+
+---
+
+## Bloomberg TUI (Project 3)
 
 Three-section desktop TUI built with [Textual](https://github.com/Textualize/textual):
 
 | Section | What's Here |
 |---|---|
-| **Home** | Live database stats + last scan summary (heatmap in Phase 1b) |
+| **Home** | DB stats + last scan summary (heatmap coming in P3 next) |
 | **Research** | Screener · Calendar · Stock Comparison · Stock Picks · Research Reports · News |
-| **Logistics** | Active supply chain events table (interactive world map in Phase 1d) |
+| **Logistics** | Active supply chain events (world map coming in P3 next) |
+
+**Stock Quote Modal** — press Enter on any Screener row or click "Open Quote →" in Stock Picks to open a full quote view: Overview (40+ fields), Signals, Price History, News. All data from the local DB — no network calls.
 
 Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up/).
+Web prototype (React/JSX) is in [`StackScreenerCD/`](StackScreenerCD/).
 
 ---
 
@@ -49,33 +67,31 @@ Mockup screenshots and an interactive HTML prototype are in [`Mock_up/`](Mock_up
 | Layer | Tools |
 |---|---|
 | Language | Python 3.14.2 |
-| Data | yfinance, yahooquery |
-| Database | SQLite — 16 tables, all access via `db.py` |
+| Data | yfinance, yahooquery, openai-whisper, pypdf |
+| Database | SQLite — 16 tables, 8 indexes, all access via `db.py` |
 | Encryption | cryptography (Fernet) + keyring (OS keyring) |
 | Terminal UI | Textual 8.x |
-| PDF reports | fpdf2 *(Phase 1f)* |
+| PDF reports | fpdf2 *(P3 planned)* |
 | SEC EDGAR | requests (XBRL JSON API, no key required) |
 | FX conversion | CurrencyConverter |
+| Web prototype | React 18 + D3 (JSX, no build step) |
 
 ---
 
 ## Project Status
 
-**Phase 0, 1a, 1c, and most of Phase 2 complete.**
-
-| Phase | Status | What it covers |
-|---|---|---|
-| Phase 0 — Foundation | ✅ Complete | DB (16 tables, 8 indexes), enricher, seeder, scoring engine, scan runner |
-| Phase 1a — App Shell | ✅ Complete | Textual TUI, login, sidebar navigation, settings table |
-| Phase 1c — Research Tabs | ✅ Complete | Screener, Calendar, Comparison, Stock Picks, Research Reports, News |
-| Phase 2b — EDGAR Pipeline | ✅ Complete | CIK seed, XBRL facts, 10-K risk flags; China exposure wired into scoring |
-| Phase 2d — News Aggregation | ✅ Complete | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance; News tab in app |
-| Phase 2f — Thematic Scan | ✅ Complete | Disruption-filtered universe + SC scoring + event context output |
-| Phase 1b — Home Screen | 🔲 Next | Market heatmap, index selector |
-| Phase 1d — Logistics | 🔲 Planned | Interactive world map with disruption pins |
-| Phase 3 — Institutional Flow | 🔲 Planned | Form 4 insider trades, 13F holdings, options flow |
-
-See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
+| Component | Status |
+|---|---|
+| Shared core — DB, scoring engine, scan runner | ✅ Complete |
+| P1 — Enricher, EDGAR, news, supply chain, congressional trades | ✅ Core complete |
+| P1 — SEC Form 4 insider trades, Form 13F, options flow | 🔲 Next |
+| P1 — Data Scraper TUI (`scraper_app.py`) | 🔲 Planned |
+| P2 — Database & Server TUI (`db_app.py`) | 🔲 Planned |
+| P3 — Screener, Calendar, Comparison, Picks, Reports, News tabs | ✅ Complete |
+| P3 — Stock Quote Modal (Enter on Screener / Picks) | ✅ Complete |
+| P3 — Home heatmap | 🔲 Next |
+| P3 — Logistics world map | 🔲 Planned |
+| P4 — Web server + React frontend | 🔲 Planned |
 
 ---
 
@@ -89,9 +105,6 @@ See [`ROADMAP.md`](ROADMAP.md) for the full phase breakdown.
 python -m venv venv
 venv\Scripts\activate          # Windows
 # source venv/bin/activate     # macOS/Linux
-
-# Install C-extension build tools (Windows — Chocolatey, one-time)
-# choco install pkgconfiglite
 
 # Install dependencies
 pip install -r requirements.txt
@@ -109,7 +122,7 @@ python src/seeder.py --schema-only
 # 2 — Seed full NYSE/NASDAQ universe (~6,900 tickers)
 python src/seeder.py
 
-# 3 — Enrich fundamentals (runs until all stocks are up to date)
+# 3 — Enrich fundamentals
 python src/enricher.py
 python src/enricher.py --limit 50   # test run — 50 stocks only
 
@@ -118,7 +131,7 @@ python src/screener_run.py                            # full NSR scan
 python src/screener_run.py --mode thematic            # supply-chain filtered
 python src/screener_run.py --limit 500 --top 25       # quick test run
 
-# 5 — Launch the TUI
+# 5 — Launch the Bloomberg TUI
 python src/app.py
 ```
 
@@ -135,6 +148,9 @@ python src/edgar.py --seed-ciks
 # Pull geographic revenue breakdown (China/US/Europe) for all stocks
 python src/edgar.py --fetch-facts
 python src/edgar.py --fetch-facts --limit 100   # test run
+
+# Pull 10-K text: risk flags + customer % mentions
+python src/edgar.py --fetch-filings --limit 100
 
 # Find stocks with >15% China revenue exposure
 python src/edgar.py --china-exposure 0.15
@@ -162,26 +178,31 @@ python src/supply_chain.py --candidates 1
 ```
 StackScreener/
 ├── src/
-│   ├── screener_config.py      ← all constants, weights, thresholds, status strings
-│   ├── db.py                   ← SQLite layer (16 tables, all DB access here)
-│   ├── crypto.py               ← Fernet encryption + PBKDF2 password hashing
-│   ├── seeder.py               ← one-time DB init + NYSE/NASDAQ universe fetch
-│   ├── enricher.py             ← background fundamentals worker + IPO calendar
-│   ├── screener.py             ← scoring engine (8 components + SC/flow overlays)
-│   ├── screener_run.py         ← CLI scan runner (nsr/thematic/watchlist + CSV)
-│   ├── supply_chain.py         ← Tier 2 curated seed + Tier 1 sector matching
-│   ├── edgar.py                ← SEC EDGAR XBRL pipeline
-│   ├── news.py                 ← podcasts (WSJ/MS/MF) + WSJ PDF + Yahoo Finance news
-│   ├── app.py                  ← Textual TUI (login, sidebar, all Research tabs + Settings)
-│   ├── pdf_generator.py        ← PDF reports [planned]
-│   └── mailer.py               ← email delivery [planned]
-├── sql_tables/                 ← canonical SQL table definitions (reference)
-├── Mock_up/                    ← UI mockups + HTML prototype
-├── man/                        ← man pages (enricher.1)
-├── CONTEXT.md                  ← full project context (read at session start)
-├── CLAUDE.md                   ← coding conventions for Claude Code
-├── ROADMAP.md                  ← phased development plan with progress tracking
-├── DATABASE.md                 ← full schema map (all 16 tables, FKs, query patterns)
+│   ├── — Shared Core —
+│   ├── screener_config.py      ← all constants, weights, thresholds
+│   ├── db.py                   ← SQLite layer (16 tables, 8 indexes)
+│   ├── crypto.py               ← Fernet encryption + password hashing
+│   ├── seeder.py               ← DB init + NYSE/NASDAQ universe fetch
+│   ├── screener.py             ← scoring engine
+│   ├── screener_run.py         ← CLI scan runner
+│   ├── — P1: Data Scraper —
+│   ├── enricher.py             ← fundamentals worker + IPO calendar
+│   ├── supply_chain.py         ← Tier 2 events + Tier 1 sector matching
+│   ├── edgar.py                ← SEC EDGAR XBRL + 10-K pipeline
+│   ├── inst_flow.py            ← congressional trades + Form 4/13F
+│   ├── news.py                 ← podcasts + WSJ PDF + Yahoo Finance
+│   ├── scraper_app.py          ← Data Scraper TUI [planned]
+│   ├── — P2: DB & Server —
+│   ├── db_app.py               ← Database & Server TUI [planned]
+│   ├── — P3: Bloomberg TUI —
+│   └── app.py                  ← Bloomberg TUI (login, Research, Logistics)
+├── StackScreenerCD/            ← P4 web prototype (React/JSX reference)
+├── sql_tables/                 ← canonical SQL table definitions
+├── Mock_up/                    ← UI mockups + original HTML prototype
+├── CONTEXT.md                  ← full project context
+├── CLAUDE.md                   ← coding conventions
+├── ROADMAP.md                  ← 4-project roadmap with backlogs
+├── DATABASE.md                 ← full schema map
 └── requirements.txt
 ```
 

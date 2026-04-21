@@ -1,9 +1,13 @@
 # CLAUDE.md — Coding Conventions for StackScreener
 
 This file tells Claude Code how to work on this project. Read it before making any changes.
-Always read `CONTEXT.md` first for full project context, and `ROADMAP.md` to confirm what
-phase is active before writing any code. Also review `tree.md` and `DATABASE.md` for
-the full file structure and schema.
+Always read `CONTEXT.md` first for full project context, and `ROADMAP.md` to confirm which
+project and backlog item is in scope before writing any code. Also review `tree.md` and
+`DATABASE.md` for the full file structure and schema.
+
+The project is structured as four independent projects (P1 Data Scraper, P2 DB & Server,
+P3 Bloomberg TUI, P4 Web). Each has its own entry point and backlog in `ROADMAP.md`.
+Shared core: `db.py`, `screener_config.py`, `crypto.py`, `screener.py`, `screener_run.py`.
 
 ---
 
@@ -56,22 +60,24 @@ Never introduce these — they are banned:
 
 Each file owns exactly one concern. Do not cross these boundaries.
 
-| File | Owns |
-|---|---|
-| `screener_config.py` | ALL constants, weights, thresholds, status strings, provider names, `DEBUG_MODE` |
-| `db.py` | All SQLite reads/writes — no other file touches the DB |
-| `crypto.py` | Fernet encryption + OS keyring key management + password hashing |
-| `seeder.py` | One-time schema init, default user seed, NYSE/NASDAQ universe fetch |
-| `enricher.py` | Background fundamentals worker + daily IPO calendar check |
-| `screener.py` | Core scoring logic only — no hardcoded magic numbers |
-| `screener_run.py` | CLI entry point and scan orchestration only |
-| `supply_chain.py` | Supply chain signal ingestion and sector mapping only |
-| `edgar.py` | SEC EDGAR pipeline: CIK seeding, XBRL facts, 10-K text extraction |
-| `news.py` | News/media aggregation + ticker tagging |
-| `inst_flow.py` | Congressional trades (Senate + House) + SEC insider/13F ingestion *(Phase 3)* |
-| `app.py` | Desktop TUI (Textual) — UI only, no business logic |
-| `pdf_generator.py` | PDF output only — fpdf2 API |
-| `mailer.py` | Email delivery only |
+| File | Project | Owns |
+|---|---|---|
+| `screener_config.py` | Shared | ALL constants, weights, thresholds, status strings, `DEBUG_MODE` |
+| `db.py` | Shared | All SQLite reads/writes — no other file touches the DB |
+| `crypto.py` | Shared | Fernet encryption + OS keyring key management + password hashing |
+| `seeder.py` | Shared | One-time schema init, default user seed, NYSE/NASDAQ universe fetch |
+| `screener.py` | Shared | Core scoring logic only — no hardcoded magic numbers |
+| `screener_run.py` | Shared | CLI entry point and scan orchestration only |
+| `enricher.py` | P1 | Background fundamentals worker + daily IPO calendar check |
+| `supply_chain.py` | P1 | Supply chain signal ingestion and sector mapping only |
+| `edgar.py` | P1 | SEC EDGAR pipeline: CIK seeding, XBRL facts, 10-K text extraction |
+| `news.py` | P1 | News/media aggregation + ticker tagging |
+| `inst_flow.py` | P1 | Congressional trades (Senate + House) + SEC Form 4/13F ingestion |
+| `scraper_app.py` | P1 | Data Scraper TUI — logs, manual triggers, source manager, LLM panel |
+| `db_app.py` | P2 | Database & Server TUI — SQL shell, table browser, API server controls |
+| `app.py` | P3 | Bloomberg TUI (Textual) — UI only, no business logic |
+| `pdf_generator.py` | P3 | PDF output only — fpdf2 API |
+| `mailer.py` | P4 | Email delivery only |
 
 ---
 
@@ -133,20 +139,27 @@ db.set_setting(user_uid, "theme", "light")
 
 ---
 
-## UI Conventions (Textual TUI — app.py)
+## UI Conventions (P3 Bloomberg TUI — app.py)
 
 Match the agreed design from `CONTEXT.md` and `Mock_up/`. Three sidebar sections:
 
-1. **Home** — DB stats summary + last scan summary (heatmap in Phase 1b)
-2. **Research** — five tabs: Screener · Calendar · Stock Comparison · Stock Picks · Research Reports
-3. **Logistics** — active supply chain events table (world map in Phase 1d)
+1. **Home** — DB stats summary + last scan summary (heatmap in P3 next)
+2. **Research** — six tabs: Screener · Calendar · Stock Comparison · Stock Picks · Research Reports · News
+3. **Logistics** — active supply chain events table (world map in P3 next)
 
 **Research tab conventions:**
-- `ScreenerTab` — filter dropdowns (Exchange/Sector/MCap/P/E/Signal) + DataTable; filter in-memory after one DB load; cap display at 200 rows
+- `ScreenerTab` — filter dropdowns (Exchange/Sector/MCap/P/E/Signal) + DataTable; filter in-memory after one DB load; cap display at 200 rows; Enter on row → `StockQuoteModal`
 - `CalendarTab` — DayCell widgets in a 7-column Horizontal; `_week_offset` reactive drives week navigation; filter buttons per event type
 - `StockComparisonTab` — 4 ticker inputs → `db.get_stock_by_ticker()` lookups → DataTable with section headers and ▲/▼ highlights; remount DataTable on each compare to reset columns
-- `StockPicksTab` — Collapsible cards for top 15 scan results; source signals from `db.get_stock_signals()`
-- `ResearchReportsTab` — Static cards from `db.get_research_reports()`; handles empty state with Phase 2 context message
+- `StockPicksTab` — Collapsible cards for top 15 scan results; source signals from `db.get_stock_signals()`; "Open Quote →" button per card → `StockQuoteModal`
+- `ResearchReportsTab` — Static cards from `db.get_research_reports()`; handles empty state
+- `NewsTab` — filter buttons per source; `db.get_news_articles()` with LEFT JOIN for ticker
+
+**`StockQuoteModal` conventions:**
+- `ModalScreen[None]` — triggered by Enter (Screener) or button click (Picks); ESC/Q to dismiss
+- All data loaded from DB on mount — no network calls; 4 tabs: Overview, Signals, History, News
+- Overview renders a single `Static` with markup via `"\n".join(parts)` — do not mount per-row widgets
+- History uses `db.get_price_history(stock_uid, start_date=...)` — last 365 days, most recent first
 
 Do not invent new screens or reorganize navigation without confirming first.
 
@@ -198,7 +211,7 @@ stackscreener.db
 
 ## When Adding a New Feature
 
-1. Check `ROADMAP.md` — confirm it's in scope for the current phase
+1. Check `ROADMAP.md` — confirm which project (P1/P2/P3/P4) owns it and that it's in the backlog
 2. Config/constants → `screener_config.py`
 3. DB changes → `db.py`:
    - Add column to `init_db()` CREATE TABLE

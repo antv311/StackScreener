@@ -40,12 +40,11 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 - Full-width market heatmap (tiles color-coded by % change, sized by market cap)
 - Index selector at bottom: S&P 500 / DOW / Russell 1000 / Recommended / All
 
-### Research (5 sub-tabs across the top bar)
+### Research (6 sub-tabs across the top bar)
 
 1. **Screener** — filterable/sortable table. Filter dropdowns: Exchange, Sector, Market Cap,
-   P/E, Signal (All / Supply Chain Picks / Congress Buys / Dark Pool Alert).
-   Columns: Rank, Ticker, Company, Sector, Market Cap, P/E, Price, Change %, Volume,
-   Score (progress bar + number).
+   P/E, Signal (All / Supply Chain Picks / Congress Buys). Press **Enter** on any row to open
+   the Stock Quote Modal.
 
 2. **Calendar** — weekly calendar view with color-coded event chips
    (green=Earnings, blue=Splits, yellow=IPOs). Filter tabs: All / Earnings / Splits / IPOs /
@@ -55,12 +54,25 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
    Price Performance, Income Statement. Highs highlighted green ▲, lows red ▼.
 
 4. **Stock Picks** — top picks scored across congressional trades, SEC insider filings,
-   Yahoo Finance, and options flow. Each pick is a collapsible card:
-   [Logo] [Ticker] [Company Name] [Price] [Composite Score]
-   Expanded: per-source breakdown with reason text and sub-score.
+   Yahoo Finance, and options flow. Each pick is a collapsible card. "Open Quote →" button
+   inside each expanded card opens the Stock Quote Modal.
 
 5. **Research Reports** — long-form research cards tagged by type
    (Supply Chain / Fundamentals / Inst. Flow). Shows title, summary, and date.
+
+6. **News** — filterable by source (WSJ Podcast, WSJ PDF, Morgan Stanley, Motley Fool,
+   Yahoo Finance). Shows headline, source, date, ticker mention.
+
+### Stock Quote Modal
+
+Triggered from: Screener (Enter on row) or Stock Picks ("Open Quote →" button).
+Press ESC or Q to close. All data from DB — no network calls on open.
+
+- **Overview** — 40+ fields: valuation, margins, growth, risk/technicals, performance,
+  ownership, plus EDGAR geographic revenue breakdown if available
+- **Signals** — `source_signals` rows + supply chain event links for the stock
+- **History** — last 365 days of OHLCV from `price_history`, dividend column
+- **News** — recent `news_articles` for this stock
 
 ### Logistics
 - World map with animated pulsing pins for active supply chain disruptions.
@@ -70,53 +82,53 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 
 ---
 
-## Architecture
+## Architecture — Four Projects, One Core
+
+StackScreener is structured as four independent projects sharing a common core.
+See `ROADMAP.md` for full per-project status and backlogs.
 
 ```
-Layer 1 — Data Sources
-  yfinance                       → price, fundamentals (primary)
-  yahooquery                     → detailed financials (supplement)
-  Yahoo Finance Screener API     → full NYSE/NASDAQ universe enumeration
-  Yahoo Finance Calendar API     → upcoming IPOs (daily check)
-  Senate Stock Watcher API       → congressional trades (Senate) — free, no key   [PARTIAL — inst_flow.py built]
-  House Stock Watcher API        → congressional trades (House) — free, no key     [PARTIAL — inst_flow.py built]
-  SEC EDGAR (Form 4)             → insider trades — free, public                   [PLANNED Phase 3]
-  SEC EDGAR (Form 13F)           → institutional holdings — free, public           [PLANNED Phase 3]
-  yfinance options chain         → basic options flow — free                       [PLANNED Phase 3]
-  worldmonitor-osint / other     → geopolitical / supply chain disruption signals  [PLANNED]
+┌─────────────────────────────┐   ┌─────────────────────────────┐
+│  P1 — Data Scraper TUI      │   │  P2 — DB & Server TUI       │
+│  scraper_app.py  [PLANNED]  │   │  db_app.py  [PLANNED]       │
+│                             │   │                             │
+│  enricher · edgar · news    │   │  db.py internals            │
+│  supply_chain · inst_flow   │   │  FastAPI server [FUTURE]    │
+└─────────────┬───────────────┘   └─────────────┬───────────────┘
+              │                                 │
+              ▼                                 ▼
+     ┌────────────────────────────────────────────┐
+     │               Shared Core                  │
+     │  db.py · screener_config.py                │
+     │  crypto.py · screener.py · screener_run.py │
+     │  SQLite: 16 tables, 8 indexes              │
+     └───────────────────┬────────────────────────┘
+                         │
+          ┌──────────────┴──────────────┐
+          ▼                             ▼
+┌──────────────────────┐     ┌──────────────────────────┐
+│  P3 — Bloomberg TUI  │     │  P4 — Web Server & Site  │
+│  app.py  ✅ Active   │     │  web/  [PLANNED P4]      │
+│                      │     │                          │
+│  Login · Screener    │     │  FastAPI · React UI      │
+│  Calendar · Picks    │     │  REST API for friends    │
+│  Comparison · News   │     │                          │
+│  StockQuoteModal     │     │  StackScreenerCD/ has    │
+│  Logistics · Settings│     │  the React prototype     │
+└──────────────────────┘     └──────────────────────────┘
+```
 
-Layer 2 — Database
-  SQLite via stackscreener.db    → 16 tables + 8 covering indexes (see schema below)
-  API keys encrypted via Fernet, master key stored in OS keyring
-  db.py helpers: get_pending_enrichment, get_pending_history, ipo_checked_today,
-                 mark_delisted, get_active_stocks, get_active_event_stocks,
-                 get_active_event_sectors, get_setting, set_setting (all SQL in db.py only)
-
-Layer 3 — Data Pipeline
-  seeder.py                      → one-time schema init + NYSE/NASDAQ universe seed
-                                   6,924 stocks seeded (NMS/NGM/NCM/NYQ)
-  enricher.py                    → rate-limited background worker; fills fundamentals,
-                                   daily IPO calendar check via Yahoo Finance;
-                                   5y price history for all listed stocks complete
-
-Layer 4 — Scoring Engine
-  screener.py                    → EV/R, PE, EV/EBITDA, profit margin, PEG,
-                                   debt/equity, supply chain + inst flow overlays
-  screener_run.py                → scan orchestration + CLI entry point
-                                   modes: nsr / thematic / watchlist; exports CSV
-
-Layer 5 — Output (Phase 1: Desktop App)
-  app.py (Textual TUI)           → Phase 1a + 1c complete: login, sidebar, all Research tabs
-                                   (Screener, Calendar, Stock Comparison, Stock Picks, Research Reports, News)
-                                   Home and Logistics panels are stubs pending Phase 1b/1d
-  news.py                        → podcast RSS + Whisper transcription + WSJ PDF + Yahoo Finance
-                                   news_articles table (16th); ticker signals → source_signals
-                                   All 7 RSS feeds verified live (April 2026)
-  pdf_generator.py               → CSV + PDF reports to Results/ directory                [PLANNED]
-
-Layer 6 — Output (Phase 5: Web App)
-  FastAPI backend                → [FUTURE]
-  REST API                       → [FUTURE]
+**Data sources (all free — no paid API keys required):**
+```
+yfinance / yahooquery         → price, fundamentals, IPO calendar, options chain
+Senate + House Stock Watcher  → congressional trades (inst_flow.py — built)
+SEC EDGAR XBRL                → geographic revenue, customer concentration (edgar.py — built)
+SEC EDGAR 10-K text           → risk flags, customer % mentions (edgar.py — built)
+SEC EDGAR Form 4              → insider buy/sell filings [P1 next]
+SEC EDGAR Form 13F            → institutional holdings [P1 planned]
+WSJ/MS/MF podcasts (Whisper)  → transcript news signals (news.py — built)
+WSJ PDF + Yahoo Finance news  → article signals (news.py — built)
+worldmonitor-osint            → supply chain events [P1 planned]
 ```
 
 ---
@@ -126,49 +138,41 @@ Layer 6 — Output (Phase 5: Web App)
 ```
 StackScreener/
 ├── src/
+│   ├── — SHARED CORE —
 │   ├── screener_config.py          ← ALL constants, weights, thresholds, status values, DEBUG_MODE
-│   ├── db.py                       ← SQLite layer — ALL DB access goes here only
+│   ├── db.py                       ← SQLite layer — ALL DB access goes here only (16 tables, 8 indexes)
 │   ├── crypto.py                   ← Fernet encryption (OS keyring) + password hashing
 │   ├── seeder.py                   ← one-time schema init + NYSE/NASDAQ universe fetch
-│   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
 │   ├── screener.py                 ← core scoring engine (8 components + SC/flow overlays)
-│   ├── screener_run.py             ← scan runner / CLI entry point (nsr/thematic/watchlist + CSV)
-│   ├── screener_post_processing.py ← normalized scoring output                  [PLANNED]
+│   ├── screener_run.py             ← scan runner / CLI (nsr/thematic/watchlist + CSV)
+│   ├── — P1: DATA SCRAPER —
+│   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
 │   ├── supply_chain.py             ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
 │   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + customer %
-│   ├── inst_flow.py                ← congressional trades (Senate + House Stock Watcher) [PARTIAL — Phase 3]
+│   ├── inst_flow.py                ← congressional trades (Senate + House) + Form 4/13F [PARTIAL — P1 next]
 │   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
-│   ├── app.py                      ← desktop TUI (Textual) — login, sidebar, all Research tabs incl. News
-│   ├── pdf_generator.py            ← PDF reports (fpdf2)                        [PLANNED]
-│   ├── mailer.py                   ← email delivery                             [PLANNED]
+│   ├── scraper_app.py              ← Data Scraper TUI entry point                        [PLANNED — P1]
+│   ├── — P2: DATABASE & SERVER —
+│   ├── db_app.py                   ← Database & Server TUI entry point                   [PLANNED — P2]
+│   ├── — P3: BLOOMBERG TUI —
+│   ├── app.py                      ← Bloomberg TUI — login, sidebar, Research tabs, StockQuoteModal
+│   ├── pdf_generator.py            ← PDF reports (fpdf2)                                 [PLANNED — P3]
+│   ├── mailer.py                   ← email delivery                                      [PLANNED — P4]
 │   └── Results/                    ← scan output (gitignored)
-├── sql_tables/                     ← canonical SQL table definitions (reference)
-│   ├── users.sql
-│   ├── watchlists.sql
-│   ├── stocks.sql
-│   ├── api_keys.sql
-│   ├── portfolio.sql
-│   ├── scans.sql
-│   ├── scan_results.sql
-│   ├── supply_chain_events.sql
-│   ├── event_stocks.sql
-│   ├── calendar_events.sql
-│   ├── source_signals.sql
-│   ├── research_reports.sql
-│   ├── price_history.sql
-│   ├── edgar_facts.sql
-│   ├── settings.sql
-│   └── news_articles.sql
+├── sql_tables/                     ← canonical SQL table definitions (reference only — schema lives in db.py)
+│   └── *.sql                       ← 16 table definitions
 ├── src/News/
 │   ├── audio/                      ← temp MP3 storage (deleted after transcription, gitignored)
 │   └── pdfs/                       ← WSJ newspaper PDFs (kept, gitignored)
-├── Mock_up/
-│   ├── *.jpg                       ← UI mockup screenshots
-│   └── Prototype/
-│       └── stackscreener_full_ui_prototype.html
+├── StackScreenerCD/                ← P4 web prototype (React/JSX, Claude-designed reference UI)
+│   ├── StackScreener Web UI.html
+│   ├── atoms.jsx · shell.jsx · home.jsx
+│   ├── research.jsx · logistics.jsx · settings.jsx
+│   └── styles.css
+├── Mock_up/                        ← TUI mockup screenshots + original HTML prototype
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
-├── ROADMAP.md                      ← phased development plan
+├── ROADMAP.md                      ← 4-project roadmap with per-project backlogs
 ├── DATABASE.md                     ← full schema map (all 16 tables, FKs, query patterns)
 ├── tree.md                         ← annotated file tree with entry points
 ├── requirements.txt
