@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-21
+> Last updated: 2026-04-22
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -168,53 +168,33 @@ company names or tickers. If 7B passes, 32B inherits the prompt library unchange
 
 ---
 
-## News Source Expansion — Widen the Net (2026-04-22)
+## News Source Expansion — DONE (2026-04-22)
 
-**Problem:** WSJ still hasn't covered the California warehouse fire. The LLM classifier
-(`llm.py` Task 1) can only process articles that are already in `news_articles`. If the
-ingestion layer misses the event, the classifier never sees it — so the supply chain event
-never gets created regardless of how good the model is. This is a data coverage gap, not a
-model gap.
+**Built:** AP News RSS, CNBC RSS, MarketWatch RSS, NewsAPI.org, Reuters (via NewsAPI), GDELT.
+All constants in `screener_config.py`. All fetchers in `news.py`.
 
-**Why this blocks the LLM test:** The warehouse fire smoke test revealed the aggregator
-missed the event entirely. Until we have broader source coverage, the LLM validation test
-suite is running against a biased sample (only WSJ/MS/MF content). We need AP and Reuters
-in the pipeline before the LLM results mean anything at scale.
+**CLI usage:**
+```bash
+python src/news.py --ap                         # AP RSS (business, finance, tech)
+python src/news.py --cnbc                       # CNBC RSS
+python src/news.py --marketwatch                # MarketWatch RSS
+python src/news.py --reuters                    # Reuters via NewsAPI (requires key)
+python src/news.py --newsapi "supply chain"     # NewsAPI keyword query
+python src/news.py --gdelt supply chain fire    # GDELT event search
+python src/news.py --all                        # all free sources (AP + CNBC + MW + podcasts + watchlist + PDFs)
+```
 
----
+**NewsAPI key setup (one-time):**
+```bash
+python -c "import sys; sys.path.insert(0,'src'); import db; db.init_db(); db.set_api_key(1,'newsapi','YOUR_KEY')"
+```
 
-### Sources to Add (all free tiers available)
+**Next step:** Run `python src/llm.py --quantize` to download and quantize Qwen2.5-7B-Instruct,
+then `--test` to validate all three extraction tasks against the warehouse fire gaps.
 
-| Source | Method | Why |
-|---|---|---|
-| **AP News** | RSS feeds (free, no key) | Breaks physical events (fires, floods, strikes) faster than WSJ |
-| **Reuters** | RSS feeds (free, no key) | Global commodity + logistics coverage; strong on port/shipping |
-| **NewsAPI.org** | REST API (free tier: 100 req/day) | Aggregates AP, Reuters + 150k sources; single integration point |
-| **GDELT Project** | REST API (free, no key) | Global event database; specifically strong on geopolitical/disaster signals |
-| **CNBC** | RSS feeds (free, no key) | Fast on market-moving supply chain stories |
-| **MarketWatch** | RSS feeds (free, no key) | Strong on commodity + sector rotation coverage |
+### LLM Integration Note (pending)
 
-**Recommended integration order:**
-1. **NewsAPI.org** first — one integration covers AP + Reuters + most others; free tier is enough to validate
-2. **GDELT** second — purpose-built for event detection, perfect feed for `supply_chain_events` auto-creation
-3. Individual RSS (AP, Reuters, CNBC, MarketWatch) — add after NewsAPI proves value
-
----
-
-### What needs to change in code
-
-- `news.py` — add `fetch_newsapi(query, api_key)` and `fetch_gdelt(keywords)` functions
-- `db.py` — no schema changes; `news_articles` already has `source` column for new sources
-- `screener_config.py` — add `NEWS_SOURCE_AP`, `NEWS_SOURCE_REUTERS`, `NEWS_SOURCE_NEWSAPI`,
-  `NEWS_SOURCE_GDELT` constants; add GDELT base URL constant
-- `api_keys` table — store NewsAPI key via `db.set_api_key()` (free key, still encrypted)
-- After ingestion: new articles flow through `llm.py classify_news()` automatically
-
----
-
-### LLM Integration Note
-
-Once broader sources are ingested, add a post-ingest step to `news.py`:
+Once model is validated, add a post-ingest step to `news.py`:
 ```
 fetch_articles() → insert into news_articles → run classify_news() on new rows
     → if is_supply_chain=True and confidence>0.7 → create supply_chain_events candidate

@@ -129,9 +129,50 @@ NEWS_SOURCE_WSJ_PDF:        str = "wsj_pdf"
 NEWS_SOURCE_MORGAN_STANLEY: str = "morgan_stanley_podcast"
 NEWS_SOURCE_MOTLEY_FOOL:    str = "motley_fool_podcast"
 NEWS_SOURCE_YAHOO_FINANCE:  str = "yahoo_finance_news"
+NEWS_SOURCE_AP:             str = "ap_news"
+NEWS_SOURCE_REUTERS:        str = "reuters_news"
+NEWS_SOURCE_CNBC:           str = "cnbc_news"
+NEWS_SOURCE_MARKETWATCH:    str = "marketwatch_news"
+NEWS_SOURCE_NEWSAPI:        str = "newsapi"
+NEWS_SOURCE_GDELT:          str = "gdelt"
 
 NEWS_SIGNAL_TRANSCRIPT_MENTION: str = "transcript_mention"
 NEWS_SIGNAL_NEWS_HEADLINE:      str = "news_headline"
+
+NEWS_MAX_ARTICLES: int = 25   # max items per non-podcast source per run
+
+# AP News RSS feeds (free, no key — verify URLs if feeds rotate)
+AP_NEWS_RSS_FEEDS: list[tuple[str, str]] = [
+    ("Business",   "https://feeds.ap.org/rss/apf-businessnews"),
+    ("Finance",    "https://feeds.ap.org/rss/apf-finance"),
+    ("Technology", "https://feeds.ap.org/rss/apf-technology"),
+]
+
+# CNBC RSS feeds (free, no key)
+CNBC_RSS_FEEDS: list[tuple[str, str]] = [
+    ("US Business", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("Finance",     "https://www.cnbc.com/id/10001147/device/rss/rss.html"),
+]
+
+# MarketWatch RSS feed (free, no key)
+MARKETWATCH_RSS_FEED: str = "https://feeds.marketwatch.com/marketwatch/topstories/"
+
+# NewsAPI.org — free tier: 100 req/day. Reuters is fetched via domains="reuters.com".
+NEWSAPI_BASE_URL:   str   = "https://newsapi.org/v2/everything"
+NEWSAPI_PAGE_SIZE:  int   = 20
+NEWSAPI_RATE_LIMIT: float = 1.0   # 1 s between requests (free tier: 100 req/day)
+
+# GDELT Project — free, no key; global event database strong on physical disruptions
+GDELT_BASE_URL:   str   = "https://api.gdeltproject.org/api/v2/doc/doc"
+GDELT_RATE_LIMIT: float = 0.5    # be polite to a free public API
+
+# Default supply-chain keywords for GDELT and NewsAPI broad runs
+SUPPLY_CHAIN_KEYWORDS: list[str] = [
+    "supply chain disruption", "warehouse fire", "port closure",
+    "factory shutdown", "logistics strike", "shipping delay",
+]
+
+PROVIDER_NEWSAPI: str = "newsapi"
 
 # Podcast RSS feeds — URLs verified via iTunes API (April 2026).
 # PODCAST_FEEDS is the canonical list used by fetch_all_podcasts().

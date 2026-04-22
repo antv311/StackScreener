@@ -44,6 +44,7 @@ from screener_config import (
     NEWS_PDF_DIR,
     NEWS_WHISPER_MODEL,
     NEWS_MAX_EPISODES,
+    NEWS_MAX_ARTICLES,
     NEWS_TICKER_MIN_LEN,
     NEWS_TICKER_MAX_LEN,
     NEWS_SOURCE_WSJ_PODCAST,
@@ -51,12 +52,28 @@ from screener_config import (
     NEWS_SOURCE_MORGAN_STANLEY,
     NEWS_SOURCE_MOTLEY_FOOL,
     NEWS_SOURCE_YAHOO_FINANCE,
+    NEWS_SOURCE_AP,
+    NEWS_SOURCE_REUTERS,
+    NEWS_SOURCE_CNBC,
+    NEWS_SOURCE_MARKETWATCH,
+    NEWS_SOURCE_NEWSAPI,
+    NEWS_SOURCE_GDELT,
     NEWS_SIGNAL_TRANSCRIPT_MENTION,
     NEWS_SIGNAL_NEWS_HEADLINE,
     PODCAST_FEEDS,
     WSJ_PODCAST_FEEDS,
     MORGAN_STANLEY_PODCAST_FEED,
     MOTLEY_FOOL_PODCAST_FEED,
+    AP_NEWS_RSS_FEEDS,
+    CNBC_RSS_FEEDS,
+    MARKETWATCH_RSS_FEED,
+    NEWSAPI_BASE_URL,
+    NEWSAPI_PAGE_SIZE,
+    NEWSAPI_RATE_LIMIT,
+    GDELT_BASE_URL,
+    GDELT_RATE_LIMIT,
+    SUPPLY_CHAIN_KEYWORDS,
+    PROVIDER_NEWSAPI,
 )
 
 # Common English words and finance acronyms that look like tickers but aren't.
@@ -457,17 +474,243 @@ def ingest_pending_pdfs() -> int:
     return total
 
 
+# ── Article RSS pipeline (no audio) ──────────────────────────────────────────
+
+def _parse_article_rss(feed_url: str, max_items: int) -> list[dict]:
+    """Fetch and parse an article RSS feed (no audio enclosure required)."""
+    resp = requests.get(
+        feed_url, timeout=20,
+        headers={"User-Agent": "StackScreener/1.0 (news aggregator)"},
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    articles: list[dict] = []
+    for item in root.findall(".//item")[:max_items]:
+        title = (item.findtext("title") or "").strip()
+        link  = item.findtext("link") or ""
+        desc  = (item.findtext("description") or "")[:1000]
+        pub   = item.findtext("pubDate") or ""
+        if title and link:
+            articles.append({"title": title, "url": link, "description": desc, "published": pub})
+    return articles
+
+
+def _ingest_rss_articles(
+    feed_url: str,
+    source_name: str,
+    max_articles: int = NEWS_MAX_ARTICLES,
+) -> int:
+    """Fetch an article RSS feed, tag tickers, store deduplicated rows."""
+    try:
+        items = _parse_article_rss(feed_url, max_articles)
+    except Exception as e:
+        print(f"  [{source_name}] RSS fetch failed ({feed_url}): {e}")
+        return 0
+
+    existing = db.get_news_article_urls(source_name)
+    stored = 0
+    for item in items:
+        if item["url"] in existing:
+            continue
+        text = f"{item['title']} {item['description']}"
+        tickers = _tag_tickers(text)
+        db.upsert_news_article({
+            "source":       source_name,
+            "headline":     item["title"],
+            "summary":      item["description"] or None,
+            "url":          item["url"],
+            "published_at": item["published"] or None,
+        })
+        _store_ticker_signals(
+            tickers, source_name, NEWS_SIGNAL_NEWS_HEADLINE,
+            f"Mentioned in '{item['title']}'", item["url"],
+        )
+        stored += 1
+
+    if stored:
+        print(f"  [{source_name}] {stored} new articles")
+    return stored
+
+
+def fetch_ap_news(max_articles: int = NEWS_MAX_ARTICLES) -> int:
+    """Fetch AP News RSS feeds (business, finance, technology)."""
+    total = 0
+    for _label, url in AP_NEWS_RSS_FEEDS:
+        total += _ingest_rss_articles(url, NEWS_SOURCE_AP, max_articles)
+    return total
+
+
+def fetch_cnbc_news(max_articles: int = NEWS_MAX_ARTICLES) -> int:
+    """Fetch CNBC RSS feeds (US business, finance)."""
+    total = 0
+    for _label, url in CNBC_RSS_FEEDS:
+        total += _ingest_rss_articles(url, NEWS_SOURCE_CNBC, max_articles)
+    return total
+
+
+def fetch_marketwatch_news(max_articles: int = NEWS_MAX_ARTICLES) -> int:
+    """Fetch MarketWatch top stories RSS feed."""
+    return _ingest_rss_articles(MARKETWATCH_RSS_FEED, NEWS_SOURCE_MARKETWATCH, max_articles)
+
+
+# ── NewsAPI.org pipeline ──────────────────────────────────────────────────────
+
+def _fetch_newsapi_articles(
+    query: str,
+    api_key: str,
+    source_name: str,
+    domains: str | None = None,
+    max_articles: int = NEWSAPI_PAGE_SIZE,
+) -> int:
+    """Core NewsAPI helper. `domains` filters to a comma-separated list of domains."""
+    params: dict = {
+        "q":        query,
+        "apiKey":   api_key,
+        "pageSize": min(max_articles, 100),
+        "language": "en",
+        "sortBy":   "publishedAt",
+    }
+    if domains:
+        params["domains"] = domains
+
+    try:
+        resp = requests.get(NEWSAPI_BASE_URL, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"  [{source_name}] NewsAPI request failed: {e}")
+        return 0
+
+    articles = data.get("articles") or []
+    existing = db.get_news_article_urls(source_name)
+    stored = 0
+    for art in articles:
+        url = art.get("url") or ""
+        if not url or url in existing:
+            continue
+        title   = (art.get("title") or "").strip()
+        desc    = (art.get("description") or "")[:1000]
+        body    = (art.get("content") or "")[:2000]
+        pub_str = art.get("publishedAt") or None
+
+        tickers = _tag_tickers(f"{title} {desc} {body}")
+        db.upsert_news_article({
+            "source":       source_name,
+            "headline":     title,
+            "summary":      desc or None,
+            "body":         body or None,
+            "url":          url,
+            "published_at": pub_str,
+        })
+        _store_ticker_signals(
+            tickers, source_name, NEWS_SIGNAL_NEWS_HEADLINE,
+            f"Mentioned in '{title}'", url,
+        )
+        time.sleep(NEWSAPI_RATE_LIMIT)
+        stored += 1
+
+    if stored:
+        print(f"  [{source_name}] {stored} new articles for '{query}'")
+    return stored
+
+
+def fetch_newsapi(query: str, user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
+    """Fetch NewsAPI.org results for a keyword query (150k+ sources, AP, Reuters included)."""
+    api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
+    if not api_key:
+        print("  [newsapi] No API key. Store with: db.set_api_key(1, 'newsapi', 'YOUR_KEY')")
+        return 0
+    return _fetch_newsapi_articles(query, api_key, NEWS_SOURCE_NEWSAPI,
+                                   max_articles=max_articles)
+
+
+def fetch_reuters(user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
+    """Fetch Reuters content via NewsAPI (Reuters discontinued public RSS in 2023)."""
+    api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
+    if not api_key:
+        print("  [reuters] NewsAPI key required. Store with: db.set_api_key(1, 'newsapi', 'YOUR_KEY')")
+        return 0
+    query = "supply chain OR commodity OR logistics OR sanctions OR trade"
+    return _fetch_newsapi_articles(query, api_key, NEWS_SOURCE_REUTERS,
+                                   domains="reuters.com", max_articles=max_articles)
+
+
+# ── GDELT pipeline ────────────────────────────────────────────────────────────
+
+def fetch_gdelt(keywords: list[str], max_records: int = 25) -> int:
+    """Fetch GDELT global event articles matching keywords. Free, no key required."""
+    query = " ".join(keywords)
+    params: dict = {
+        "query":      query,
+        "mode":       "artlist",
+        "maxrecords": max_records,
+        "format":     "json",
+    }
+    try:
+        time.sleep(GDELT_RATE_LIMIT)
+        resp = requests.get(GDELT_BASE_URL, params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"  [gdelt] Request failed: {e}")
+        return 0
+
+    articles = data.get("articles") or []
+    existing = db.get_news_article_urls(NEWS_SOURCE_GDELT)
+    stored = 0
+    for art in articles:
+        url = art.get("url") or ""
+        if not url or url in existing:
+            continue
+        title    = (art.get("title") or "").strip()
+        domain   = art.get("domain") or ""
+        seendate = art.get("seendate") or ""
+
+        pub_str: str | None = None
+        if seendate and len(seendate) >= 15:
+            try:
+                pub_str = datetime.strptime(seendate[:15], "%Y%m%dT%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+
+        tickers = _tag_tickers(f"{title} {domain}")
+        db.upsert_news_article({
+            "source":       NEWS_SOURCE_GDELT,
+            "headline":     title,
+            "summary":      f"Source: {domain}" if domain else None,
+            "url":          url,
+            "published_at": pub_str,
+        })
+        _store_ticker_signals(
+            tickers, NEWS_SOURCE_GDELT, NEWS_SIGNAL_NEWS_HEADLINE,
+            f"Mentioned in '{title}'", url,
+        )
+        stored += 1
+
+    if stored:
+        print(f"  [gdelt] {stored} new articles for '{query}'")
+    return stored
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(
-    podcasts:    bool = False,
-    yahoo_tickers: list[str] | None = None,
-    watchlist:   bool = False,
-    wsj_pdf:     str | None = None,
-    ingest_pdfs: bool = False,
-    all_sources: bool = False,
-    max_episodes: int = NEWS_MAX_EPISODES,
-    whisper_model: str | None = None,
+    podcasts:       bool = False,
+    yahoo_tickers:  list[str] | None = None,
+    watchlist:      bool = False,
+    wsj_pdf:        str | None = None,
+    ingest_pdfs:    bool = False,
+    ap:             bool = False,
+    cnbc:           bool = False,
+    marketwatch:    bool = False,
+    reuters:        bool = False,
+    newsapi_query:  str | None = None,
+    gdelt_keywords: list[str] | None = None,
+    all_sources:    bool = False,
+    max_episodes:   int = NEWS_MAX_EPISODES,
+    max_articles:   int = NEWS_MAX_ARTICLES,
+    whisper_model:  str | None = None,
+    user_uid:       int = 1,
 ) -> None:
     if whisper_model:
         set_whisper_model(whisper_model)
@@ -479,6 +722,9 @@ def run(
         podcasts    = True
         watchlist   = True
         ingest_pdfs = True
+        ap          = True
+        cnbc        = True
+        marketwatch = True
 
     if podcasts:
         print("-- Podcasts (all sources) -----------------------")
@@ -505,16 +751,53 @@ def run(
         n = ingest_pending_pdfs()
         print(f"   {n} PDFs ingested\n")
 
+    if ap:
+        print("-- AP News RSS ----------------------------------")
+        n = fetch_ap_news(max_articles)
+        print(f"   {n} new articles\n")
+
+    if cnbc:
+        print("-- CNBC RSS -------------------------------------")
+        n = fetch_cnbc_news(max_articles)
+        print(f"   {n} new articles\n")
+
+    if marketwatch:
+        print("-- MarketWatch RSS ------------------------------")
+        n = fetch_marketwatch_news(max_articles)
+        print(f"   {n} new articles\n")
+
+    if reuters:
+        print("-- Reuters (via NewsAPI) ------------------------")
+        n = fetch_reuters(user_uid=user_uid, max_articles=max_articles)
+        print(f"   {n} new articles\n")
+
+    if newsapi_query:
+        print(f"-- NewsAPI: '{newsapi_query}' -------------------")
+        n = fetch_newsapi(newsapi_query, user_uid=user_uid, max_articles=max_articles)
+        print(f"   {n} new articles\n")
+
+    if gdelt_keywords:
+        print(f"-- GDELT: {gdelt_keywords} ----------------------")
+        n = fetch_gdelt(gdelt_keywords)
+        print(f"   {n} new articles\n")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="StackScreener news aggregator")
-    parser.add_argument("--podcasts",     action="store_true",        help="Fetch all podcast sources (WSJ, Morgan Stanley, Motley Fool)")
+    parser.add_argument("--podcasts",     action="store_true",         help="Fetch all podcast sources (WSJ, Morgan Stanley, Motley Fool)")
     parser.add_argument("--yahoo",        nargs="+", metavar="TICKER", help="Fetch Yahoo Finance news for specific tickers")
-    parser.add_argument("--watchlist",    action="store_true",        help="Fetch Yahoo Finance news for all watchlist stocks")
-    parser.add_argument("--wsj-pdf",      metavar="PATH",             help="Ingest a specific WSJ newspaper PDF")
-    parser.add_argument("--ingest-pdfs",  action="store_true",        help=f"Ingest all new PDFs in {NEWS_PDF_DIR}")
-    parser.add_argument("--all",          action="store_true",        help="Run all sources (podcasts + watchlist + pending PDFs)")
-    parser.add_argument("--episodes",     type=int, default=NEWS_MAX_EPISODES, metavar="N", help=f"Max episodes per podcast source (default {NEWS_MAX_EPISODES})")
+    parser.add_argument("--watchlist",    action="store_true",         help="Fetch Yahoo Finance news for all watchlist stocks")
+    parser.add_argument("--wsj-pdf",      metavar="PATH",              help="Ingest a specific WSJ newspaper PDF")
+    parser.add_argument("--ingest-pdfs",  action="store_true",         help=f"Ingest all new PDFs in {NEWS_PDF_DIR}")
+    parser.add_argument("--ap",           action="store_true",         help="Fetch AP News RSS (business + finance + technology)")
+    parser.add_argument("--cnbc",         action="store_true",         help="Fetch CNBC RSS feeds")
+    parser.add_argument("--marketwatch",  action="store_true",         help="Fetch MarketWatch RSS top stories")
+    parser.add_argument("--reuters",      action="store_true",         help="Fetch Reuters via NewsAPI (requires newsapi key)")
+    parser.add_argument("--newsapi",      metavar="QUERY",             help="Fetch NewsAPI.org results for a keyword query")
+    parser.add_argument("--gdelt",        nargs="+", metavar="KEYWORD", help="Fetch GDELT global event articles matching keywords")
+    parser.add_argument("--all",          action="store_true",         help="Run all free sources (podcasts + watchlist + PDFs + AP + CNBC + MarketWatch)")
+    parser.add_argument("--episodes",     type=int, default=NEWS_MAX_EPISODES,  metavar="N", help=f"Max episodes per podcast source (default {NEWS_MAX_EPISODES})")
+    parser.add_argument("--articles",     type=int, default=NEWS_MAX_ARTICLES,  metavar="N", help=f"Max articles per news source (default {NEWS_MAX_ARTICLES})")
     parser.add_argument("--model",        default=None, metavar="SIZE", help="Whisper model size: base | small | medium | large")
     args = parser.parse_args()
 
@@ -524,8 +807,15 @@ def main() -> None:
         watchlist=args.watchlist,
         wsj_pdf=args.wsj_pdf,
         ingest_pdfs=args.ingest_pdfs,
+        ap=args.ap,
+        cnbc=args.cnbc,
+        marketwatch=args.marketwatch,
+        reuters=args.reuters,
+        newsapi_query=args.newsapi,
+        gdelt_keywords=args.gdelt,
         all_sources=args.all,
         max_episodes=args.episodes,
+        max_articles=args.articles,
         whisper_model=args.model,
     )
 
