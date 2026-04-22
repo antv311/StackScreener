@@ -47,10 +47,14 @@ def _get_device() -> str:
 
 
 def quantize_and_save(model_id: str = MODEL_ID, output_dir: str = QUANTIZED_DIR) -> None:
-    """Download model, apply TurboQuant 4-bit Hadamard, save to disk."""
-    print(f"Loading {model_id} in bf16...")
+    """Download model, apply TurboQuant 4-bit Hadamard, save to disk.
+
+    Loads in bf16 on CPU so all weights are accessible (avoids meta-tensor
+    offload when bf16 model exceeds GPU VRAM). Quantized output fits in GPU.
+    """
+    print(f"Loading {model_id} in bf16 on CPU (full weights needed for quantization)...")
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype=torch.bfloat16, device_map="auto"
+        model_id, dtype=torch.bfloat16, device_map="cpu"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
@@ -66,16 +70,54 @@ def quantize_and_save(model_id: str = MODEL_ID, output_dir: str = QUANTIZED_DIR)
     print("Done.")
 
 
+def _prepare_for_inference(model) -> None:
+    """Patch each TurboQuantLinear layer for memory-safe inference on ≤8 GB VRAM.
+
+    The default `_get_indices()` caches unpacked indices for every layer the
+    first time they are called, accumulating ~20 GB for a 7B model — well
+    beyond 8 GB VRAM.  Replacing the method with a no-cache version means
+    only the current layer's indices (~68–272 MB) are resident during its
+    forward call; they are freed before the next layer runs.
+
+    Also disables cuTile/Triton fused kernels (not present on this build) so
+    the PyTorch fallback path is used instead.
+    """
+    import types
+    from turboquant_model.module import TurboQuantLinear
+    from turboquant_model.quantize import unpack_4bit
+
+    def _nocache_get_indices(self) -> torch.Tensor:
+        return unpack_4bit(self.indices_packed, self.in_features)
+
+    for m in model.modules():
+        if isinstance(m, TurboQuantLinear):
+            m.use_cutile = False
+            m.use_triton = False
+            m._get_indices = types.MethodType(_nocache_get_indices, m)
+
+
 def load_model(quantized_dir: str = QUANTIZED_DIR) -> tuple:
-    """Load quantized model + tokenizer from disk."""
+    """Load quantized model + tokenizer from disk.
+
+    load_quantized() with device='cuda' allocates a full bf16 model (~14 GB)
+    to GPU before swapping in quantized weights, causing OOM on 8 GB cards.
+    Work-around: load on CPU, patch away index caching (see _prepare_for_inference),
+    then move only the compact quantized weights (~4.6 GB) to CUDA.
+    """
     if not Path(quantized_dir).exists():
         raise FileNotFoundError(
             f"Quantized model not found at {quantized_dir}. "
             "Run: python src/llm.py --quantize"
         )
-    if cfg.DEBUG_MODE:
-        print(f"Loading quantized model from {quantized_dir}...")
-    model = load_quantized(MODEL_ID, quantized_dir)
+    print("Loading quantized model on CPU...")
+    model = load_quantized(MODEL_ID, quantized_dir, device="cpu")
+    _prepare_for_inference(model)
+
+    device = _get_device()
+    if device == "cuda":
+        print("Moving quantized model to CUDA (~4.6 GB)...")
+        model = model.to(device)
+
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(quantized_dir)
     return model, tokenizer
