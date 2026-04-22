@@ -1,0 +1,33 @@
+# Virtual environment
+venv/
+builds/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database
+*.db
+stackscreener.db
+
+# Scan output
+src/Results/
+
+# News media (large files)
+src/News/audio/
+src/News/pdfs/
+
+# Large binary wheels
+*.whl
+
+# pip install artifacts
+=*
+
+# Claude Code local settings
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

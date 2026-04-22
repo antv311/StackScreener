@@ -8,3 +8,5 @@ keyring>=25.6.0
 textual>=0.80.0
 fpdf2>=2.7.9
 pypdf>=4.0.0
+selenium>=4.20.0
+webdriver-manager>=4.0.0

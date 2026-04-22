@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>StackScreener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="https://unpkg.com/d3-array@3"></script>
+<script src="https://unpkg.com/d3-geo@3"></script>
+<script src="https://unpkg.com/topojson-client@3"></script>
+
+<script type="text/babel" src="atoms.jsx"></script>
+<script type="text/babel" src="shell.jsx"></script>
+<script type="text/babel" src="home.jsx"></script>
+<script type="text/babel" src="research.jsx"></script>
+<script type="text/babel" src="logistics.jsx"></script>
+<script type="text/babel" src="settings.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "accent": 155,
+  "sidebar": "pill",
+  "logo": "candle"
+}/*EDITMODE-END*/;
+
+// Initialize from tweaks → StackStore
+(() => {
+  const s = StackStore.state;
+  if (!('theme' in s)) StackStore.set({ ...TWEAK_DEFAULTS, ...s });
+  const theme = StackStore.get('theme', TWEAK_DEFAULTS.theme);
+  const accent = StackStore.get('accent', TWEAK_DEFAULTS.accent);
+  document.documentElement.dataset.theme = theme === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light') : theme;
+  document.documentElement.style.setProperty('--accent-h', accent);
+})();
+
+function TweakPanel({ show, onClose }) {
+  const s = StackStore.use();
+  if (!show) return null;
+  const acc = s.accent ?? 155;
+  const sidebar = s.sidebar ?? 'flat';
+  const logo = s.logo ?? 'stacked-bars';
+  const theme = s.theme ?? 'dark';
+  const postKeys = (edits) => window.parent.postMessage({type:'__edit_mode_set_keys', edits}, '*');
+  const setTheme = (t) => { StackStore.set({ theme: t }); document.documentElement.dataset.theme = t === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light') : t; postKeys({ theme: t }); };
+  const setAccent = (h) => { StackStore.set({ accent: h }); document.documentElement.style.setProperty('--accent-h', h); postKeys({ accent: h }); };
+  const setSidebar = (k) => { StackStore.set({ sidebar: k }); postKeys({ sidebar: k }); };
+  const setLogo = (k) => { StackStore.set({ logo: k }); postKeys({ logo: k }); };
+  return (
+    <div className="tweak-panel">
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <h4 style={{ margin:0 }}>Tweaks</h4>
+        <button className="btn ghost sm" onClick={onClose}><Icon name="close" size={14}/></button>
+      </div>
+      <div className="row"><span>Theme</span>
+        <div className="chip-row">
+          {['dark','light','auto'].map(t => <button key={t} className={'chip'+(theme===t?' active':'')} onClick={()=>setTheme(t)}>{t}</button>)}
+        </div>
+      </div>
+      <div className="row"><span>Accent</span>
+        <div className="chip-row">
+          {[{h:155,l:'Em'},{h:180,l:'Tl'},{h:220,l:'Az'},{h:280,l:'Vt'},{h:330,l:'Rs'},{h:70,l:'Am'}].map(a => (
+            <span key={a.h} title={a.l} className={'swatch'+(acc===a.h?' active':'')}
+              onClick={()=>setAccent(a.h)}
+              style={{ background:`oklch(0.72 0.15 ${a.h})` }}/>
+          ))}
+        </div>
+      </div>
+      <div className="row"><span>Sidebar</span>
+        <div className="chip-row">
+          {[['flat','Flat'],['pill','Pill'],['rail','Rail']].map(([k,l]) => <button key={k} className={'chip'+(sidebar===k?' active':'')} onClick={()=>setSidebar(k)}>{l}</button>)}
+        </div>
+      </div>
+      <div className="row" style={{ alignItems:'flex-start' }}><span>Logo</span>
+        <div className="chip-row" style={{ maxWidth:180, justifyContent:'flex-end' }}>
+          {[['stacked-bars','Bars'],['chevron-stack','Chev'],['ss-mono','Mono'],['candle','Candle']].map(([k,l]) => <button key={k} className={'chip'+(logo===k?' active':'')} onClick={()=>setLogo(k)}>{l}</button>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [path, go] = useRoute();
+  const s = StackStore.use();
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+
+  // Edit mode protocol
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      else if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({type:'__edit_mode_available'}, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  if (path === '/login' || path === '/' || path === '') {
+    return <>
+      <LoginPage go={go} logo={s.logo || 'stacked-bars'}/>
+      <TweakPanel show={tweaksOpen} onClose={()=>setTweaksOpen(false)}/>
+    </>;
+  }
+
+  const sidebar = s.sidebar || 'flat';
+  const Sidebar = sidebar === 'pill' ? SidebarPill : sidebar === 'rail' ? SidebarRail : SidebarFlat;
+
+  return (
+    <div className={'app sidebar-' + sidebar}>
+      <Sidebar current={path} go={go} logo={s.logo || 'stacked-bars'}/>
+      <div className="main">
+        <Topbar current={path}/>
+        {path.startsWith('/home') && <HomePage/>}
+        {path.startsWith('/research') && <ResearchPage sub={path.split('/')[2] || 'screener'} go={go}/>}
+        {path.startsWith('/logistics') && <LogisticsPage/>}
+        {path.startsWith('/settings') && <SettingsPage sub={path.split('/')[2] || 'users'} go={go}/>}
+        {path.startsWith('/preferences') && <PreferencesPage sub={path.split('/')[2] || 'profile'} go={go}/>}
+      </div>
+      <TweakPanel show={tweaksOpen} onClose={()=>setTweaksOpen(false)}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
