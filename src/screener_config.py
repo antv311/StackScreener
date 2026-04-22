@@ -57,14 +57,20 @@ EVENT_STATUS_RESOLVED:   str = "resolved"
 EVENT_STATUS_MONITORING: str = "monitoring"
 
 # ── Supply Chain Event Types ───────────────────────────────────────────────────
-EVENT_TYPE_CONFLICT:         str = "conflict"
-EVENT_TYPE_SANCTIONS:        str = "sanctions"
-EVENT_TYPE_WEATHER:          str = "weather"
-EVENT_TYPE_LABOR:            str = "labor"
-EVENT_TYPE_ACCIDENT:         str = "accident"
-EVENT_TYPE_PORT_BLOCKAGE:    str = "port_blockage"
-EVENT_TYPE_FACTORY_SHUTDOWN: str = "factory_shutdown"
-EVENT_TYPE_PANDEMIC:         str = "pandemic"
+EVENT_TYPE_CONFLICT:           str = "conflict"
+EVENT_TYPE_SANCTIONS:          str = "sanctions"
+EVENT_TYPE_WEATHER:            str = "weather"
+EVENT_TYPE_LABOR:              str = "labor"
+EVENT_TYPE_ACCIDENT:           str = "accident"
+EVENT_TYPE_PORT_BLOCKAGE:      str = "port_blockage"
+EVENT_TYPE_FACTORY_SHUTDOWN:   str = "factory_shutdown"
+EVENT_TYPE_PANDEMIC:           str = "pandemic"
+EVENT_TYPE_FIRE:               str = "fire"
+EVENT_TYPE_FLOOD:              str = "flood"
+EVENT_TYPE_NATURAL_DISASTER:   str = "natural_disaster"
+EVENT_TYPE_INFRASTRUCTURE:     str = "infrastructure_failure"
+EVENT_TYPE_PRODUCT_RECALL:     str = "product_recall"
+EVENT_TYPE_CYBER:              str = "cybersecurity"
 
 EVENT_TYPES: frozenset[str] = frozenset({
     EVENT_TYPE_CONFLICT,
@@ -75,6 +81,12 @@ EVENT_TYPES: frozenset[str] = frozenset({
     EVENT_TYPE_PORT_BLOCKAGE,
     EVENT_TYPE_FACTORY_SHUTDOWN,
     EVENT_TYPE_PANDEMIC,
+    EVENT_TYPE_FIRE,
+    EVENT_TYPE_FLOOD,
+    EVENT_TYPE_NATURAL_DISASTER,
+    EVENT_TYPE_INFRASTRUCTURE,
+    EVENT_TYPE_PRODUCT_RECALL,
+    EVENT_TYPE_CYBER,
 })
 
 # ── Confidence Levels ──────────────────────────────────────────────────────────
@@ -110,6 +122,10 @@ FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
 FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"
 FACT_RISK_FLAGS:             str = "risk_flags"        # boolean supply-chain risk indicators
 FACT_FILING_CUSTOMERS:       str = "filing_customers"  # customer % mentions from 10-K text
+FACT_8K_EVENTS:              str = "8k_material_events" # keyword-flagged 8-K material events
+
+EDGAR_8K_LOOKBACK_DAYS:  int   = 30   # fetch 8-Ks filed in last 30 days
+EDGAR_8K_STALENESS_DAYS: int   = 7    # re-check 8-Ks weekly
 
 # ── External Tools ────────────────────────────────────────────────────────────
 # Absolute path to the directory containing ffmpeg.exe — prepended to PATH at
@@ -222,8 +238,21 @@ HOUSE_WATCHER_URL:    str = "https://housestockwatcher.com/api"
 CONGRESS_LOOKBACK_DAYS: int = 180   # how far back to pull trades on first run
 CONGRESS_BUY_SCORE:   float = 65.0  # sub_score for a congressional purchase signal
 CONGRESS_SELL_SCORE:  float = 25.0  # sub_score for a congressional sale signal
-SIGNAL_CONGRESS_BUY:  str = "congress_buy"
-SIGNAL_CONGRESS_SELL: str = "congress_sell"
+SIGNAL_CONGRESS_BUY:   str = "congress_buy"
+SIGNAL_CONGRESS_SELL:  str = "congress_sell"
+SIGNAL_INSIDER_BUY:    str = "insider_buy"
+SIGNAL_INSIDER_SELL:   str = "insider_sell"
+SIGNAL_MATERIAL_EVENT: str = "material_event"
+
+INSIDER_BUY_SCORE:     float = 70.0  # sub_score for insider purchase signal
+INSIDER_SELL_SCORE:    float = 20.0  # sub_score for insider sale signal
+MATERIAL_EVENT_SCORE:  float = 55.0  # sub_score for 8-K material event signal
+
+FORM4_LOOKBACK_DAYS: int = 90  # default Form 4 lookback window
+
+PROVIDER_SEC_EDGAR: str = "sec_edgar"  # provider name for Form 4 + 8-K source_signals
+
+LLM_CLASSIFY_CONFIDENCE_THRESHOLD: float = 0.7  # min confidence to auto-promote to supply_chain_events
 
 # ── WSJ PDF Fetcher ────────────────────────────────────────────────────────────
 # Chrome profile that is already logged into WSJ — use login.py in WSJbot to refresh session.

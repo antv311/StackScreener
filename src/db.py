@@ -431,6 +431,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN ev_revenue REAL",
         "ALTER TABLE stocks ADD COLUMN ev_ebitda REAL",
         "ALTER TABLE stocks ADD COLUMN company_name TEXT",
+        "ALTER TABLE news_articles ADD COLUMN llm_classified INTEGER NOT NULL DEFAULT 0",
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched   ON stocks (delisted, last_enriched_at)",
@@ -1185,6 +1186,21 @@ def get_news_articles_for_stock(stock_uid: int, limit: int = 20) -> list[dict]:
     return query(
         "SELECT * FROM news_articles WHERE stock_uid = ? ORDER BY published_at DESC LIMIT ?",
         (stock_uid, limit),
+    )
+
+
+def get_unclassified_news_articles(limit: int = 50) -> list[dict]:
+    """Return articles not yet passed through the LLM classifier, oldest first."""
+    return query(
+        "SELECT * FROM news_articles WHERE llm_classified = 0 ORDER BY published_at ASC LIMIT ?",
+        (limit,),
+    )
+
+
+def mark_article_classified(article_uid: int) -> None:
+    execute(
+        "UPDATE news_articles SET llm_classified = 1 WHERE article_uid = ?",
+        (article_uid,),
     )
 
 

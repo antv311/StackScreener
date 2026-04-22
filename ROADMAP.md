@@ -74,11 +74,13 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `news.py` — WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Complete |
 | `supply_chain.py` — 6 curated events, 37 company links, Tier 1 matching | ✅ Complete |
 | `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Built (Phase 3 wiring) |
-| SEC EDGAR Form 4 — insider buy/sell filings | 🔲 Next |
+| `inst_flow.py --form4` — SEC EDGAR Form 4 insider buy/sell trades | ✅ Complete |
 | SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
 | yfinance options chain — basic options flow | 🔲 Planned |
 | `llm.py` — 3 tasks validated 3/3 on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
-| Automated supply chain event ingestion | 🔲 Planned |
+| `edgar.py --fetch-8k` — 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
+| `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
+| Tier 2 seeds expanded (9 events: +consumer staples + labor strike + industrial REIT) | ✅ Complete |
 | `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
 
 ---
@@ -141,12 +143,12 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 ## P1 — Next Up
 
-### SEC EDGAR Form 4 — Insider Trades
+### SEC EDGAR Form 4 — Insider Trades ✅ Built
 
-- [ ] `inst_flow.py --form4` — fetch recent Form 4 filings from EDGAR full-text search API
-- [ ] Parse: filer name, issuer ticker, transaction type (buy/sell), shares, price, date
-- [ ] Store in `source_signals` with `signal_type = 'insider_buy'` / `'insider_sell'`
-- [ ] Wire into composite score (configurable weight in `screener_config.py`)
+- [x] `inst_flow.py --form4` — EDGAR EFTS search → XML parse → source_signals
+- [x] Parse: insider name/title, transaction type (A=buy/D=sell), shares, price, date
+- [x] Store in `source_signals` with `signal_type = 'insider_buy'` / `'insider_sell'`
+- [ ] Wire SIGNAL_INSIDER_BUY / SIGNAL_INSIDER_SELL into composite score in `screener.py`
 
 ### SEC EDGAR Form 13F — Institutional Holdings
 
@@ -176,9 +178,11 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P1 — Backlog / Enhancements
 
+- Wire Form 4 insider trades into composite score (SIGNAL_INSIDER_BUY weight in screener.py)
 - **Three-stream coverage gaps** — upstream (USDA crop/EIA energy/mining), midstream (AIS
-  chokepoints/Panama Canal/port congestion), downstream (8-K fire pipeline/REIT entity
-  resolution/consumer staples Tier 2 seeds) — see `todonext.md` for full breakdown
+  chokepoints/Panama Canal/port congestion), downstream (REIT entity resolution via 10-K LLM)
+  — 8-K pipeline, Gap 1 (LLM classifier), Gap 2 (event types), Gap 4 (consumer staples seeds),
+  Gap 5 (8-K) all closed — see `todonext.md` for remaining items
 - Automated supply chain event ingestion (worldmonitor-osint or news scraping)
 - Automated refresh on app startup or scheduled trigger
 - Earnings call transcript ingestion (via SEC EDGAR or podcast feeds)

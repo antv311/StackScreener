@@ -26,9 +26,10 @@ from screener_config import (
     DEBUG_MODE,
     CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
     EVENT_TYPE_CONFLICT, EVENT_TYPE_SANCTIONS, EVENT_TYPE_WEATHER,
+    EVENT_TYPE_LABOR, EVENT_TYPE_FIRE, EVENT_TYPE_PORT_BLOCKAGE,
     EVENT_STATUS_ACTIVE, EVENT_STATUS_MONITORING,
     ROLE_IMPACTED, ROLE_BENEFICIARY,
-    SEVERITY_HIGH, SEVERITY_MEDIUM,
+    SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_CRITICAL,
 )
 
 
@@ -507,6 +508,232 @@ _TIER2_SEEDS: list[dict] = [
             },
         ],
     },
+    # ── Consumer Staples Warehouse Fire — REIT / Paper Goods Chain ────────────
+    {
+        "event": {
+            "title":               "US Distribution Warehouse Fire — Consumer Staples",
+            "region":              "United States",
+            "event_type":          EVENT_TYPE_FIRE,
+            "description":         (
+                "A major fire at an industrial distribution warehouse destroys millions in "
+                "consumer staples inventory (paper goods, household products, food/bev). "
+                "Industrial REITs own and lease the facilities; consumer staples manufacturers "
+                "and retailers absorb the inventory loss. Regional supply shortages of "
+                "paper goods typically last 4-8 weeks while alternative distribution routes "
+                "are established."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            34.1,
+            "longitude":           -117.5,
+            "country_code":        "US",
+            "trade_route":         None,
+            "commodity":           "paper goods, household products, consumer staples",
+            "affected_sectors":    json.dumps(["Consumer Staples", "Real Estate"]),
+            "affected_industries": json.dumps(["Household Products", "Paper & Packaging", "Industrial REITs"]),
+            "beneficiary_sectors": json.dumps(["Consumer Staples", "Real Estate"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "PLD",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "leased warehouse space at affected facility; tenant operations disrupted",
+                "will_redirect":  "Alternative Prologis facilities in adjacent markets absorb displaced tenants",
+                "impact_notes":   "Prologis is largest US industrial REIT; warehouse fires create short-term tenant dislocation and insurance claims",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "EXR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Extra Space Storage benefits as displaced tenants seek overflow storage during facility rebuild",
+                "impact_notes":   "Self-storage REITs historically see occupancy and pricing benefits from regional warehouse disruptions",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "KMB",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Kimberly-Clark paper goods inventory in affected region for 4-8 weeks",
+                "will_redirect":  "Reroute from alternative distribution centers; accelerate manufacturing output",
+                "impact_notes":   "Kimberly-Clark (Kleenex, Scott, Huggies) primary beneficiary of warehouse fire disruption on paper goods inventory",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "PG",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "P&G household product inventory in fire-affected distribution zone",
+                "will_redirect":  "Alternative DC network; prioritize highest-velocity SKUs",
+                "impact_notes":   "Procter & Gamble broad household product exposure; large distribution warehouse tenant",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CLX",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Clorox benefits from competitor inventory shortage; shelf space shifts during restock period",
+                "impact_notes":   "Household products competitor positioned to capture incremental shelf allocation during KMB/PG restock",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "WMT",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "full household products shelf availability in affected region stores",
+                "will_redirect":  "Cross-region inventory transfer; temporary substitution SKUs",
+                "impact_notes":   "Walmart as major retailer bears out-of-stock risk; supply constraints from distributor to shelf",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── West Coast Port Labor Strike — Container Shipping ─────────────────────
+    {
+        "event": {
+            "title":               "West Coast Port Labor Strike (ILWU)",
+            "region":              "North America",
+            "event_type":          EVENT_TYPE_LABOR,
+            "description":         (
+                "A strike or work slowdown by the International Longshore and Warehouse Union "
+                "(ILWU) at West Coast ports (Los Angeles, Long Beach, Seattle, Oakland) halts "
+                "container throughput. The Ports of LA/Long Beach handle ~40% of all US "
+                "container imports. A full strike shifts imports to Gulf Coast and East Coast "
+                "ports, driving up freight rates across all ocean carriers and straining "
+                "intermodal rail capacity."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            33.7,
+            "longitude":           -118.2,
+            "country_code":        "US",
+            "trade_route":         "Trans-Pacific",
+            "commodity":           "containerized goods, consumer electronics, apparel, auto parts",
+            "affected_sectors":    json.dumps(["Industrials", "Consumer Discretionary", "Consumer Staples", "Technology"]),
+            "affected_industries": json.dumps(["Marine Shipping", "Air Freight & Logistics", "Trucking"]),
+            "beneficiary_sectors": json.dumps(["Industrials", "Energy"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "MATX",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal West Coast port container throughput and on-time vessel schedules",
+                "will_redirect":  "Gulf and East Coast vessel rerouting where feasible; premium surcharges",
+                "impact_notes":   "Matson Navigation West Coast–Hawaii and transpacific services directly impacted by ILWU strike",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "ZIM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Trans-Pacific import volumes via West Coast gateway ports",
+                "will_redirect":  "East Coast and Gulf port alternatives at higher cost and transit time",
+                "impact_notes":   "ZIM significant West Coast trans-Pacific exposure; strike forces cargo diversion and vessel schedule disruption",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "EXPD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Expeditors captures premium freight forwarding fees as shippers scramble for alternatives",
+                "impact_notes":   "Freight forwarders historically benefit from port disruptions; clients pay premium rates for alternate routing and air freight surge",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CHRW",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "C.H. Robinson benefits from intermodal and trucking demand surge as cargo reroutes inland",
+                "impact_notes":   "Third-party logistics provider benefits from rate spike and volume surge through alternative ports and rail",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "UNP",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Union Pacific intermodal network captures diverted cargo flowing through Gulf ports toward Midwest",
+                "impact_notes":   "Rail benefits from truck overflow and rerouted import containers; intermodal pricing power increases during port strikes",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "AMZN",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "on-time delivery of West Coast-inbound consumer goods and Prime inventory replenishment",
+                "will_redirect":  "Air freight surge for high-priority SKUs; East Coast DC inventory rebalancing",
+                "impact_notes":   "Amazon West Coast fulfillment centers heavily dependent on Trans-Pacific import flow; strike creates inventory shortfall",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Industrial REIT Capacity Shock — E-Commerce Logistics ─────────────────
+    {
+        "event": {
+            "title":               "Industrial REIT Capacity Shock — E-Commerce Logistics",
+            "region":              "United States",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "A sudden surge in e-commerce demand (pandemic-type event, major retail "
+                "consolidation, or infrastructure loss) creates acute shortage of distribution "
+                "and last-mile logistics warehouse space. Available Class A industrial REIT "
+                "space is absorbed within 90 days, driving vacancy rates to record lows and "
+                "lease rates 30-50% above prior market. Alternative: sudden demand collapse "
+                "(post-pandemic normalization) drives oversupply and rate compression."
+            ),
+            "severity":            SEVERITY_MEDIUM,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            40.7,
+            "longitude":           -74.0,
+            "country_code":        "US",
+            "trade_route":         None,
+            "commodity":           "warehouse space, last-mile logistics, 3PL capacity",
+            "affected_sectors":    json.dumps(["Real Estate", "Industrials", "Consumer Discretionary"]),
+            "affected_industries": json.dumps(["Industrial REITs", "Air Freight & Logistics", "Specialty Retail"]),
+            "beneficiary_sectors": json.dumps(["Real Estate", "Industrials"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "PLD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Prologis captures demand surge; portfolio vacancy drops; rents reset 30-50% higher at lease renewal",
+                "impact_notes":   "Prologis largest global logistics REIT; tightest supply in key infill markets (LA, NJ, Chicago, Seattle)",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "DRE",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Duke Realty (now Prologis post-merger) benefits from same industrial demand surge dynamic",
+                "impact_notes":   "Duke Realty legacy portfolio acquired by Prologis 2022; increases Prologis market share in Midwest and Southeast",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "REXR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Rexford Industrial concentrates in Southern California infill — most supply-constrained market in US logistics",
+                "impact_notes":   "Rexford pure-play Southern California industrial REIT; LA/OC/IE markets see largest rent spikes during demand surges",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "FR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "First Industrial Realty benefits from demand surge across Midwest and Southeast distribution corridors",
+                "impact_notes":   "First Industrial diversified across key Midwest and Southeast logistics hubs; benefits from 3PL capacity tightening",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "AMZN",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "cost-competitive expansion of last-mile fulfillment network during capacity shortage",
+                "will_redirect":  "Premium lease rates accepted to secure strategic locations; build-to-suit development accelerated",
+                "impact_notes":   "Amazon largest single tenant in US industrial real estate; capacity shock directly impacts fulfillment expansion plans",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
 ]
 
 

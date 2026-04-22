@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-22 (session 3)
+> Last updated: 2026-04-22 (session 4)
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -14,35 +14,22 @@ missed it entirely. This event exposed five structural gaps in the pipeline:
 
 ---
 
-### Gap 1 — No automated event creation from news
+### Gap 1 — No automated event creation from news — ✅ CLOSED
 
-**Problem:** `news.py` collects articles into `news_articles` but nothing promotes them to
-`supply_chain_events`. A fire story sits inert — it never becomes a scored signal. The upstream
-chain (REIT → supplier → vendor) never fires.
-
-**What needs to exist:** A classifier that reads `news_articles` rows and, when a disruption
-pattern is detected (fire, flood, strike, sanctions, port closure, etc.), creates a
-`supply_chain_events` row and links affected tickers via `event_stocks`.
-
-**Candidate approach:** LLM pass over new articles (local Ollama / P40) or a lightweight
-keyword+regex classifier as a first pass before LLM confirmation.
+**Built:** `news.py --classify` runs the LLM disruption classifier on unclassified `news_articles`
+rows. If `is_supply_chain=True` and `confidence >= 0.7`, creates a `supply_chain_events` candidate
+(status=monitoring) and links named tickers via `event_stocks`. Marks each article with
+`llm_classified=1` so it is never re-processed. Run after any ingest pass.
 
 ---
 
-### Gap 2 — Event type coverage is macro-only
+### Gap 2 — Event type coverage is macro-only — ✅ CLOSED
 
-**Problem:** The 6 Tier 2 seeds are all geopolitical (Taiwan Strait, Red Sea, sanctions).
-Domestic physical events — fires, floods, strikes, infrastructure failures — have no
-representation. Different signal class entirely.
-
-**What needs to exist:** Expand `supply_chain_events.event_type` to include:
-- `fire` / `flood` / `natural_disaster`
-- `labor_strike`
-- `infrastructure_failure`
-- `product_recall`
-- `facility_shutdown`
-
-Also expand Tier 2 seed scenarios to cover consumer staples + REIT chains.
+**Built:** Added to `screener_config.EVENT_TYPES` frozenset: `fire`, `flood`, `natural_disaster`,
+`infrastructure_failure`, `product_recall`, `cybersecurity`. 3 new Tier 2 seeds added:
+consumer staples warehouse fire (PLD/KMB/PG/CLX/WMT), West Coast port labor strike
+(MATX/ZIM/EXPD/CHRW/UNP/AMZN), industrial REIT capacity shock (PLD/REXR/FR/AMZN).
+Tier 2 seed total: 9 events.
 
 ---
 
@@ -72,19 +59,52 @@ event → sector link.
 
 ---
 
-### Gap 5 — No EDGAR 8-K material event signal
+### Gap 5 — No EDGAR 8-K material event signal — ✅ CLOSED
 
-**Problem:** SEC Form 8-K filings cover material events — fires, facility losses, and major
-disruptions qualify. We pull 10-K text and XBRL facts but not 8-Ks. The warehouse fire REIT
-would have filed an 8-K within 4 business days.
+**Built:** `edgar.py --fetch-8k` uses the EDGAR submissions API (`data.sec.gov/submissions/CIK{cik}.json`)
+to find 8-Ks filed in the last 30 days per stock, fetches primary document text from archives,
+and runs 7-category keyword detection (fire, flood, natural_disaster, infrastructure_failure,
+product_recall, cybersecurity, facility_shutdown). Results stored as:
+- `edgar_facts` row (type=`8k_material_events`) — weekly check record
+- `source_signals` row (`signal_type=material_event`, sub_score=55)
+- `supply_chain_events` candidate (status=monitoring) if severity=HIGH
 
-**What needs to exist:**
-- `edgar.py --fetch-8k` — poll EDGAR full-text search for recent 8-K filings per ticker
-- Parse Item 1.05 (Material Cybersecurity Incidents) and Item 8.01 (Other Events)
-- Flag fire/flood/facility keywords → create `source_signals` row + candidate `supply_chain_events`
-- New CLI flag: `python src/edgar.py --fetch-8k --limit 100`
+Re-checks weekly per `EDGAR_8K_STALENESS_DAYS=7`. Rate-limited to 10 req/s.
 
 ---
+
+---
+
+## Session 4 Work — DONE (2026-04-22)
+
+Five items completed this session:
+
+| Item | Files Changed | Gap Closed |
+|---|---|---|
+| `edgar.py --fetch-8k` | edgar.py, screener_config.py, db.py | Gap 5 — downstream 8-K material events |
+| `inst_flow.py --form4` | inst_flow.py, screener_config.py | P1 — insider trades from EDGAR Form 4 |
+| Tier 2 seeds ×3 | supply_chain.py, screener_config.py | Gap 4 — consumer staples + labor + industrial REIT |
+| `news.py --classify` | news.py, db.py | Gap 1 — LLM auto-promotes to supply_chain_events |
+| New event types | screener_config.py | Gap 2 — fire/flood/recall/infra/cyber coverage |
+
+### New CLI commands
+
+```bash
+# 8-K material event scanner (weekly; fires, floods, recalls, cyber, facility shutdowns)
+python src/edgar.py --fetch-8k
+python src/edgar.py --fetch-8k --limit 100
+
+# Form 4 insider trades (EDGAR EFTS search → XML parse → source_signals)
+python src/inst_flow.py --form4
+python src/inst_flow.py --form4 --limit 200 --days 90
+
+# LLM news classifier → auto supply_chain_events promotion
+python src/news.py --classify
+python src/news.py --classify --limit 20
+
+# Seed expanded Tier 2 (9 events now: 6 original + consumer staples + labor strike + industrial REIT)
+python src/supply_chain.py --seed-tier2
+```
 
 ---
 
@@ -168,12 +188,10 @@ This closes Gap 1 from the warehouse fire smoke test end-to-end.
 
 ## Other Items Queued
 
-### P1 — Form 4 Insider Trades
-- `inst_flow.py --form4`
-- Fetch recent Form 4 filings from EDGAR full-text search API
-- Parse: filer name, issuer ticker, transaction type (buy/sell), shares, price, date
-- Store in `source_signals` with `signal_type = 'insider_buy'` / `'insider_sell'`
-- Wire into composite score
+### P1 — Form 4 Insider Trades — ✅ BUILT (2026-04-22)
+- `python src/inst_flow.py --form4` — EDGAR EFTS search + XML parse → source_signals
+- Scores: insider_buy=70, insider_sell=20 (in screener_config.py)
+- **Next:** Wire SIGNAL_INSIDER_BUY / SIGNAL_INSIDER_SELL into `screener.py` composite score
 
 ### P1 — Form 13F Institutional Holdings
 - `inst_flow.py --form13f`

@@ -7,9 +7,17 @@ Sources:
   - Motley Fool Money   (RSS → MP3 → Whisper)
   - Yahoo Finance news  (yfinance .news — per ticker, no audio)
   - WSJ newspaper PDF   (pypdf text extraction — drop PDF in src/News/pdfs/)
+  - AP News RSS, CNBC RSS, MarketWatch RSS
+  - NewsAPI.org REST (AP, Reuters + 150k sources; requires key)
+  - GDELT Project REST (global event database; free, no key)
 
 Ticker mentions in all content are stored as source_signals.
 Full articles/transcripts are stored in the news_articles table.
+
+LLM post-ingest hook:
+  - --classify  Run the LLM disruption classifier on unclassified news_articles rows.
+                Articles with is_supply_chain=True and confidence >= threshold are
+                promoted to supply_chain_events candidates.
 
 Usage:
     python src/news.py --podcasts               # all three podcast sources
@@ -17,7 +25,15 @@ Usage:
     python src/news.py --watchlist              # Yahoo news for all watched stocks
     python src/news.py --wsj-pdf PATH           # ingest one WSJ newspaper PDF
     python src/news.py --ingest-pdfs            # ingest all PDFs in src/News/pdfs/
-    python src/news.py --all                    # podcasts + watchlist Yahoo news + pending PDFs
+    python src/news.py --ap                     # AP News RSS
+    python src/news.py --cnbc                   # CNBC RSS
+    python src/news.py --marketwatch            # MarketWatch RSS
+    python src/news.py --reuters                # Reuters via NewsAPI (requires key)
+    python src/news.py --newsapi "supply chain" # NewsAPI keyword query
+    python src/news.py --gdelt supply chain fire # GDELT event search
+    python src/news.py --all                    # all free sources
+    python src/news.py --classify               # run LLM classifier on unclassified rows
+    python src/news.py --classify --limit 20    # classify at most 20 articles
     python src/news.py --episodes N             # override max episodes per source (default 3)
     python src/news.py --model small            # override Whisper model size
 
@@ -74,6 +90,11 @@ from screener_config import (
     GDELT_RATE_LIMIT,
     SUPPLY_CHAIN_KEYWORDS,
     PROVIDER_NEWSAPI,
+    LLM_CLASSIFY_CONFIDENCE_THRESHOLD,
+    EVENT_STATUS_MONITORING,
+    SEVERITY_MEDIUM, SEVERITY_HIGH,
+    CONFIDENCE_MEDIUM,
+    ROLE_IMPACTED,
 )
 
 # Common English words and finance acronyms that look like tickers but aren't.
@@ -692,6 +713,121 @@ def fetch_gdelt(keywords: list[str], max_records: int = 25) -> int:
     return stored
 
 
+# ── LLM post-ingest classifier ────────────────────────────────────────────────
+
+def classify_unclassified_articles(limit: int = 50) -> int:
+    """
+    Run the LLM news disruption classifier on unclassified news_articles rows.
+
+    For each article where llm_classified = 0:
+      - Call llm.classify_news(headline, body)
+      - Mark the article as classified
+      - If is_supply_chain=True and confidence >= LLM_CLASSIFY_CONFIDENCE_THRESHOLD:
+          * Create a supply_chain_events candidate (status=monitoring)
+          * Link any named tickers via event_stocks (role=impacted)
+
+    Returns count of articles promoted to supply_chain_events.
+    Loads the model once and processes all articles in a single session.
+    """
+    import json as _json
+
+    articles = db.get_unclassified_news_articles(limit)
+    if not articles:
+        print("No unclassified news articles to process.")
+        return 0
+
+    print(f"Loading LLM model for classification of {len(articles)} articles...")
+    try:
+        import llm as _llm
+        model, tokenizer = _llm.load_model()
+    except FileNotFoundError as e:
+        print(f"LLM model not found: {e}")
+        return 0
+
+    promoted = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for i, article in enumerate(articles, 1):
+        headline = article.get("headline") or ""
+        body     = article.get("body") or article.get("summary") or ""
+        if not headline:
+            db.mark_article_classified(article["article_uid"])
+            continue
+
+        result = _llm.classify_news(model, tokenizer, headline, body)
+        db.mark_article_classified(article["article_uid"])
+
+        if not result:
+            if DEBUG_MODE:
+                print(f"[classify] article {article['article_uid']}: unparseable LLM output")
+            continue
+
+        is_sc      = result.get("is_supply_chain", False)
+        confidence = float(result.get("confidence", 0.0))
+        event_type = result.get("event_type", "other")
+        severity   = result.get("severity", SEVERITY_MEDIUM)
+        sectors    = result.get("sectors", [])
+        location   = result.get("location")
+        tickers    = [t.upper() for t in result.get("affected_tickers", []) if t]
+
+        print(
+            f"  [{i}/{len(articles)}] {headline[:60]!r}: "
+            f"sc={is_sc}, conf={confidence:.2f}, type={event_type}"
+        )
+
+        if not is_sc or confidence < LLM_CLASSIFY_CONFIDENCE_THRESHOLD:
+            continue
+
+        # Map severity string to canonical value
+        severity_map = {"CRITICAL": "CRITICAL", "HIGH": SEVERITY_HIGH,
+                        "MEDIUM": SEVERITY_MEDIUM, "LOW": "LOW", "NONE": SEVERITY_MEDIUM}
+        severity = severity_map.get(severity.upper(), SEVERITY_MEDIUM)
+
+        title = f"{event_type.replace('_', ' ').title()} — {location or headline[:60]}"
+        sc_event = {
+            "title":               title[:120],
+            "region":              location or "United States",
+            "event_type":          event_type,
+            "description":         f"Auto-detected from news article: {headline}",
+            "severity":            severity,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            None,
+            "longitude":           None,
+            "country_code":        None,
+            "trade_route":         None,
+            "commodity":           None,
+            "affected_sectors":    _json.dumps(sectors),
+            "affected_industries": _json.dumps([]),
+            "beneficiary_sectors": _json.dumps([]),
+            "event_date":          (article.get("published_at") or now)[:10],
+            "source_url":          article.get("url"),
+        }
+        event_uid = db.upsert_supply_chain_event(sc_event)
+
+        # Link any named tickers to the event
+        if tickers:
+            stock_map = db.get_stocks_by_tickers(tickers)
+            for ticker in tickers:
+                stock = stock_map.get(ticker)
+                if stock:
+                    db.link_event_stock(
+                        supply_chain_event_uid=event_uid,
+                        stock_uid=stock["stock_uid"],
+                        role=ROLE_IMPACTED,
+                        impact_notes=f"Named in news article: {headline[:100]}",
+                        confidence=CONFIDENCE_MEDIUM,
+                    )
+
+        promoted += 1
+        print(
+            f"    → PROMOTED to supply_chain_events uid={event_uid} "
+            f"({event_type}, {severity}, conf={confidence:.2f})"
+        )
+
+    print(f"\nClassification complete: {len(articles)} processed, {promoted} promoted to events.")
+    return promoted
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(
@@ -707,6 +843,8 @@ def run(
     newsapi_query:  str | None = None,
     gdelt_keywords: list[str] | None = None,
     all_sources:    bool = False,
+    classify:       bool = False,
+    classify_limit: int = 50,
     max_episodes:   int = NEWS_MAX_EPISODES,
     max_articles:   int = NEWS_MAX_ARTICLES,
     whisper_model:  str | None = None,
@@ -781,6 +919,11 @@ def run(
         n = fetch_gdelt(gdelt_keywords)
         print(f"   {n} new articles\n")
 
+    if classify:
+        print("-- LLM Disruption Classifier --------------------")
+        classify_unclassified_articles(classify_limit)
+        print()
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="StackScreener news aggregator")
@@ -796,6 +939,8 @@ def main() -> None:
     parser.add_argument("--newsapi",      metavar="QUERY",             help="Fetch NewsAPI.org results for a keyword query")
     parser.add_argument("--gdelt",        nargs="+", metavar="KEYWORD", help="Fetch GDELT global event articles matching keywords")
     parser.add_argument("--all",          action="store_true",         help="Run all free sources (podcasts + watchlist + PDFs + AP + CNBC + MarketWatch)")
+    parser.add_argument("--classify",     action="store_true",         help="Run LLM classifier on unclassified news_articles rows → supply_chain_events")
+    parser.add_argument("--limit",        type=int, default=50, metavar="N", help="--classify only: max articles to classify per run (default 50)")
     parser.add_argument("--episodes",     type=int, default=NEWS_MAX_EPISODES,  metavar="N", help=f"Max episodes per podcast source (default {NEWS_MAX_EPISODES})")
     parser.add_argument("--articles",     type=int, default=NEWS_MAX_ARTICLES,  metavar="N", help=f"Max articles per news source (default {NEWS_MAX_ARTICLES})")
     parser.add_argument("--model",        default=None, metavar="SIZE", help="Whisper model size: base | small | medium | large")
@@ -814,6 +959,8 @@ def main() -> None:
         newsapi_query=args.newsapi,
         gdelt_keywords=args.gdelt,
         all_sources=args.all,
+        classify=args.classify,
+        classify_limit=args.limit,
         max_episodes=args.episodes,
         max_articles=args.articles,
         whisper_model=args.model,

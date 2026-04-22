@@ -16,8 +16,8 @@ StackScreener/
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
 │   ├── supply_chain.py                   ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
-│   ├── inst_flow.py                      ← congressional trades (Senate + House) + Form 4/13F  [PARTIAL — P1 next]
-│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT
+│   ├── inst_flow.py                      ← congressional trades (Senate + House) + Form 4 insider trades (EDGAR EFTS)
+│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
 │   ├── scraper_app.py                    ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   │
@@ -137,6 +137,9 @@ Tables must be created in this order (FK dependencies):
 | `python src/news.py --podcasts` | P1 | Fetch + transcribe latest WSJ / Morgan Stanley / Motley Fool |
 | `python src/news.py --watchlist` | P1 | Fetch Yahoo Finance news for all watchlist stocks |
 | `python src/news.py --ingest-pdfs` | P1 | Ingest all WSJ newspaper PDFs in `src/News/pdfs/` |
+| `python src/news.py --classify` | P1 | Run LLM classifier on unclassified articles → supply_chain_events |
+| `python src/edgar.py --fetch-8k` | P1 | Scan recent 8-K filings for material supply-chain events |
+| `python src/inst_flow.py --form4` | P1 | Fetch EDGAR Form 4 insider trades → source_signals |
 | `python src/screener_run.py` | Shared | Run a full NSR scan — scores all active stocks |
 | `python src/screener_run.py --mode thematic` | Shared | Supply-chain-aware scan (filtered universe) |
 | `python src/screener_run.py --limit N --top 25` | Shared | Limit universe + show top 25 |

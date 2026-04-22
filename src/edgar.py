@@ -1,7 +1,7 @@
 """
 edgar.py — SEC EDGAR data pipeline for StackScreener.
 
-Three pipelines, all free (no API key required):
+Four pipelines, all free (no API key required):
 
   XBRL structured facts (geographic revenue, customer concentration):
     1. --seed-ciks      Map every ticker to its SEC CIK (run once, idempotent).
@@ -11,10 +11,15 @@ Three pipelines, all free (no API key required):
     3. --fetch-filings  Download latest 10-K via edgartools; extract risk flags
                         and customer percentage mentions; store as edgar_facts.
 
+  8-K material event detection (fires, facility losses, cybersecurity):
+    4. --fetch-8k       Poll recent 8-K filings; keyword-flag supply-chain events;
+                        create source_signals rows + supply_chain_events candidates.
+
 Usage:
     python edgar.py --seed-ciks
     python edgar.py --fetch-facts [--limit N]
     python edgar.py --fetch-filings [--limit N]
+    python edgar.py --fetch-8k [--limit N]
     python edgar.py --china-exposure 0.15
 """
 
@@ -22,7 +27,9 @@ import argparse
 import json
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
 
 import requests
 
@@ -30,14 +37,21 @@ import db
 from screener_config import (
     DEBUG_MODE,
     EDGAR_RATE_LIMIT, EDGAR_STALENESS_DAYS, EDGAR_FILING_STALENESS, EDGAR_IDENTITY,
+    EDGAR_8K_LOOKBACK_DAYS, EDGAR_8K_STALENESS_DAYS,
     FACT_GEOGRAPHIC_REVENUE, FACT_CUSTOMER_CONCENTRATION,
-    FACT_RISK_FLAGS, FACT_FILING_CUSTOMERS,
+    FACT_RISK_FLAGS, FACT_FILING_CUSTOMERS, FACT_8K_EVENTS,
+    EVENT_TYPE_FIRE, EVENT_TYPE_FLOOD, EVENT_TYPE_NATURAL_DISASTER,
+    EVENT_TYPE_INFRASTRUCTURE, EVENT_TYPE_PRODUCT_RECALL, EVENT_TYPE_CYBER,
+    EVENT_STATUS_MONITORING, SEVERITY_MEDIUM, SEVERITY_HIGH, CONFIDENCE_MEDIUM,
+    ROLE_IMPACTED, SIGNAL_MATERIAL_EVENT, MATERIAL_EVENT_SCORE, PROVIDER_SEC_EDGAR,
 )
 
-_EDGAR_HEADERS = {"User-Agent": "StackScreener antv311@gmail.com"}
+_EDGAR_HEADERS   = {"User-Agent": "StackScreener antv311@gmail.com"}
 
-_CIK_MAP_URL    = "https://www.sec.gov/files/company_tickers.json"
-_FACTS_URL      = "https://data.sec.gov/api/xbrl/companyfacts/{cik}.json"
+_CIK_MAP_URL     = "https://www.sec.gov/files/company_tickers.json"
+_FACTS_URL       = "https://data.sec.gov/api/xbrl/companyfacts/{cik}.json"
+_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+_ARCHIVES_URL    = "https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn}/{doc}"
 
 # XBRL concept names used for geographic revenue extraction.
 # Companies use different concepts; we try each in order.
@@ -436,6 +450,275 @@ def fetch_filing_text(limit: int | None = None) -> None:
             _sys.modules["edgar"] = old_mod
 
 
+# ── 8-K material event pipeline ───────────────────────────────────────────────
+
+# Keyword groups for lightweight 8-K classification.
+# Each key is the event_type value stored in source_signals / supply_chain_events.
+_8K_KEYWORD_GROUPS: dict[str, list[str]] = {
+    EVENT_TYPE_FIRE:           ["fire", "blaze", "arson", "burned down", "destroyed by fire", "conflagration"],
+    EVENT_TYPE_FLOOD:          ["flood", "flooding", "water damage", "inundation", "storm surge"],
+    EVENT_TYPE_NATURAL_DISASTER: ["tornado", "hurricane", "earthquake", "wildfire", "severe storm",
+                                  "natural disaster", "ice storm"],
+    EVENT_TYPE_INFRASTRUCTURE: ["bridge collapse", "power outage", "grid failure", "infrastructure failure",
+                                "pipeline rupture", "rail derailment"],
+    EVENT_TYPE_PRODUCT_RECALL: ["recall", "product recall", "safety recall", "voluntary recall",
+                                "cpsc", "fda recall"],
+    EVENT_TYPE_CYBER:          ["cybersecurity", "ransomware", "data breach", "cyber attack", "cyberattack",
+                                "unauthorized access", "information security incident"],
+    "facility_shutdown":       ["facility shutdown", "plant closure", "suspended operations",
+                                "temporarily closed", "production halt"],
+}
+
+# 8-K items that most often contain material physical/operational events
+_8K_SUPPLY_CHAIN_ITEMS = frozenset({
+    "item 1.05",   # material cybersecurity incidents (new 2023 rule)
+    "item 8.01",   # other events (catch-all for fires, disasters, etc.)
+    "item 2.05",   # costs associated with exit or disposal activities
+    "item 2.06",   # material impairments
+})
+
+_SEVERITY_MAP: dict[str, str] = {
+    EVENT_TYPE_FIRE:             SEVERITY_HIGH,
+    EVENT_TYPE_FLOOD:            SEVERITY_HIGH,
+    EVENT_TYPE_NATURAL_DISASTER: SEVERITY_HIGH,
+    EVENT_TYPE_INFRASTRUCTURE:   SEVERITY_MEDIUM,
+    EVENT_TYPE_PRODUCT_RECALL:   SEVERITY_MEDIUM,
+    EVENT_TYPE_CYBER:            SEVERITY_MEDIUM,
+    "facility_shutdown":         SEVERITY_HIGH,
+}
+
+
+class _StripHTML(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(self._parts)
+
+
+def _strip_html(html: str) -> str:
+    parser = _StripHTML()
+    parser.feed(html)
+    return parser.get_text()
+
+
+def _detect_8k_event(text: str) -> dict | None:
+    """Keyword-scan 8-K text. Returns event dict or None if no supply-chain signal found."""
+    text_lower = text.lower()
+
+    # Require at least one 8-K item header to be present — filters out non-operational 8-Ks
+    has_relevant_item = any(item in text_lower for item in _8K_SUPPLY_CHAIN_ITEMS)
+
+    detected: dict[str, bool] = {}
+    for event_type, keywords in _8K_KEYWORD_GROUPS.items():
+        if any(kw in text_lower for kw in keywords):
+            detected[event_type] = True
+
+    if not detected:
+        return None
+
+    # Pick the highest-severity detected type as the primary
+    primary = max(detected, key=lambda t: {
+        SEVERITY_HIGH: 2, SEVERITY_MEDIUM: 1
+    }.get(_SEVERITY_MAP.get(t, SEVERITY_MEDIUM), 1))
+
+    return {
+        "event_type":         primary,
+        "all_detected":       list(detected.keys()),
+        "severity":           _SEVERITY_MAP.get(primary, SEVERITY_MEDIUM),
+        "has_relevant_item":  has_relevant_item,
+        "supply_chain_relevant": True,
+    }
+
+
+def _fetch_8k_filing_text(cik: str, accession: str, primary_doc: str) -> str | None:
+    """Fetch the text of a single 8-K primary document from EDGAR archives."""
+    cik_int = str(int(cik))  # strip leading zeros for archives path
+    accn    = accession.replace("-", "")
+    url     = _ARCHIVES_URL.format(cik_int=cik_int, accn=accn, doc=primary_doc)
+    try:
+        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if "html" in ct or primary_doc.endswith((".htm", ".html")):
+            return _strip_html(resp.text)
+        return resp.text
+    except Exception as e:
+        if DEBUG_MODE:
+            print(f"[edgar:8K] fetch failed {url}: {e}")
+        return None
+
+
+def _get_recent_8k_filings(cik: str, lookback_days: int = EDGAR_8K_LOOKBACK_DAYS) -> list[dict]:
+    """Return recent 8-K filings for a CIK via the submissions JSON API."""
+    url = _SUBMISSIONS_URL.format(cik=cik)
+    try:
+        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        if DEBUG_MODE:
+            print(f"[edgar:8K] submissions fetch failed for CIK {cik}: {e}")
+        return []
+
+    recent   = data.get("filings", {}).get("recent", {})
+    forms    = recent.get("form", [])
+    dates    = recent.get("filingDate", [])
+    accns    = recent.get("accessionNumber", [])
+    docs     = recent.get("primaryDocument", [])
+
+    cutoff  = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    results = []
+    for form, date, accn, doc in zip(forms, dates, accns, docs):
+        if form == "8-K" and date >= cutoff:
+            results.append({"filing_date": date, "accession": accn, "primary_doc": doc})
+    return results
+
+
+def _get_pending_8k_stocks(limit: int | None = None) -> list[dict]:
+    """Return active stocks with CIKs whose 8-K check is missing or stale."""
+    cutoff = (datetime.now() - timedelta(days=EDGAR_8K_STALENESS_DAYS)).strftime("%Y-%m-%d")
+    sql = """
+        SELECT s.stock_uid, s.ticker, s.cik, s.sector
+        FROM stocks s
+        WHERE s.cik IS NOT NULL
+          AND s.delisted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM edgar_facts ef
+              WHERE ef.stock_uid = s.stock_uid
+                AND ef.fact_type = ?
+                AND ef.fetched_at >= ?
+          )
+        ORDER BY s.ticker ASC
+    """
+    params: tuple = (FACT_8K_EVENTS, cutoff)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return db.query(sql, params)
+
+
+def fetch_8k_filings(limit: int | None = None) -> None:
+    """
+    For each pending stock, fetch recent 8-K filings and keyword-scan for
+    supply-chain-relevant material events. Stores results as:
+      - edgar_facts row (FACT_8K_EVENTS) — records that we checked this stock
+      - source_signals row — one per material event found
+      - supply_chain_events candidate — if severity is HIGH or CRITICAL
+    """
+    pending = _get_pending_8k_stocks(limit)
+    if not pending:
+        print("8-K checks are up to date.")
+        return
+
+    print(f"Scanning 8-K filings for {len(pending)} stocks...")
+    now      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok = flagged = skipped = failed = 0
+
+    for i, stock in enumerate(pending, 1):
+        filings = _get_recent_8k_filings(stock["cik"])
+        time.sleep(EDGAR_RATE_LIMIT)
+
+        if not filings:
+            # No recent 8-Ks — write a "checked, nothing found" fact so we skip next week
+            db.upsert_edgar_fact({
+                "stock_uid":  stock["stock_uid"],
+                "fact_type":  FACT_8K_EVENTS,
+                "period":     datetime.now().strftime("%Y-%m"),
+                "value_json": json.dumps({"checked": True, "filings_found": 0}),
+            })
+            skipped += 1
+            continue
+
+        events_found: list[dict] = []
+        for filing in filings:
+            text = _fetch_8k_filing_text(stock["cik"], filing["accession"], filing["primary_doc"])
+            time.sleep(EDGAR_RATE_LIMIT)
+            if not text:
+                continue
+
+            event = _detect_8k_event(text)
+            if not event:
+                continue
+
+            events_found.append({**event, "filing_date": filing["filing_date"]})
+
+            # Build EDGAR filing URL for source_signals
+            accn_path = filing["accession"].replace("-", "")
+            cik_int   = str(int(stock["cik"]))
+            filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn_path}/{filing['primary_doc']}"
+
+            reason = (
+                f"{stock['ticker']} 8-K ({filing['filing_date']}): "
+                f"{event['event_type']} detected — items: {', '.join(event['all_detected'])}"
+            )
+            db.upsert_source_signal({
+                "stock_uid":   stock["stock_uid"],
+                "source":      PROVIDER_SEC_EDGAR,
+                "signal_type": SIGNAL_MATERIAL_EVENT,
+                "sub_score":   MATERIAL_EVENT_SCORE,
+                "reason_text": reason[:200],
+                "signal_url":  filing_url,
+                "raw_data":    json.dumps(event),
+                "fetched_at":  now,
+            })
+
+            # Promote to supply_chain_events candidate if severity is HIGH+
+            if event["severity"] in (SEVERITY_HIGH,):
+                sc_event = {
+                    "title":               f"{event['event_type'].replace('_', ' ').title()} — {stock['ticker']}",
+                    "region":              "United States",
+                    "event_type":          event["event_type"],
+                    "description":         reason,
+                    "severity":            event["severity"],
+                    "status":              EVENT_STATUS_MONITORING,
+                    "latitude":            None,
+                    "longitude":           None,
+                    "country_code":        "US",
+                    "trade_route":         None,
+                    "commodity":           None,
+                    "affected_sectors":    json.dumps([stock.get("sector")] if stock.get("sector") else []),
+                    "affected_industries": json.dumps([]),
+                    "beneficiary_sectors": json.dumps([]),
+                    "event_date":          filing["filing_date"],
+                    "source_url":          filing_url,
+                }
+                event_uid = db.upsert_supply_chain_event(sc_event)
+                db.link_event_stock(
+                    supply_chain_event_uid=event_uid,
+                    stock_uid=stock["stock_uid"],
+                    role=ROLE_IMPACTED,
+                    impact_notes=reason[:200],
+                    confidence=CONFIDENCE_MEDIUM,
+                )
+
+        # Write the check record regardless of whether events were found
+        db.upsert_edgar_fact({
+            "stock_uid":  stock["stock_uid"],
+            "fact_type":  FACT_8K_EVENTS,
+            "period":     datetime.now().strftime("%Y-%m"),
+            "value_json": json.dumps({"checked": True, "filings_found": len(filings), "events": events_found}),
+        })
+
+        if events_found:
+            flagged += 1
+            print(f"  FLAG [{i}/{len(pending)}] {stock['ticker']}: {len(events_found)} event(s) — {[e['event_type'] for e in events_found]}")
+        else:
+            ok += 1
+            if DEBUG_MODE:
+                print(f"[edgar:8K] {stock['ticker']}: {len(filings)} 8-K(s), no supply-chain keywords")
+
+    print(f"\nDone — {flagged} flagged, {ok} clean, {skipped} no recent 8-Ks, {failed} failed.")
+
+
 # ── Reporting ──────────────────────────────────────────────────────────────────
 
 def print_china_exposure(min_pct: float) -> None:
@@ -459,9 +742,12 @@ def main() -> None:
     group.add_argument("--seed-ciks",      action="store_true",           help="Map all tickers to SEC CIKs (run once)")
     group.add_argument("--fetch-facts",    action="store_true",           help="Pull XBRL geographic and customer facts for all stocks")
     group.add_argument("--fetch-filings",  action="store_true",           help="Download 10-K text and extract supply-chain risk flags")
+    group.add_argument("--fetch-8k",       action="store_true",           help="Scan recent 8-K filings for material supply-chain events")
     group.add_argument("--china-exposure", type=float, metavar="MIN_PCT", help="Print stocks with China revenue >= MIN_PCT (e.g. 0.15 for 15%%)")
     parser.add_argument("--limit",         type=int,   default=None, metavar="N", help="Process at most N stocks then exit")
     args = parser.parse_args()
+
+    db.init_db()
 
     if args.seed_ciks:
         seed_ciks()
@@ -469,6 +755,8 @@ def main() -> None:
         fetch_facts(args.limit)
     elif args.fetch_filings:
         fetch_filing_text(args.limit)
+    elif args.fetch_8k:
+        fetch_8k_filings(args.limit)
     elif args.china_exposure is not None:
         print_china_exposure(args.china_exposure)
 

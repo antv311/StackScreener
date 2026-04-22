@@ -27,7 +27,9 @@ Signal layers in the composite score:
 | **News aggregation** | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Live |
 | **Congressional trades** | Senate/House Stock Watcher (free APIs) | ✅ Live |
 | **LLM extraction** | Qwen2.5-7B→32B + TurboQuant 4-bit — news/8-K/10-K parsing | ✅ 3/3 validated (7B) |
-| **SEC insider filings** | EDGAR Form 4 + 13F (free) | 🔲 Next |
+| **8-K material events** | EDGAR 8-K — fire/flood/recall/cyber keyword scanner | ✅ Live |
+| **SEC insider trades** | EDGAR Form 4 — insider buy/sell signals | ✅ Live |
+| **SEC Form 13F** | Institutional holdings (quarterly) | 🔲 Next |
 
 ---
 
@@ -87,7 +89,11 @@ Web prototype (React/JSX) is in [`StackScreenerCD/`](StackScreenerCD/).
 | Shared core — DB, scoring engine, scan runner | ✅ Complete |
 | P1 — Enricher, EDGAR, news, supply chain, congressional trades | ✅ Core complete |
 | P1 — LLM extraction pipeline — 3/3 tasks validated on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
-| P1 — SEC Form 4 insider trades, Form 13F, options flow | 🔲 Next |
+| P1 — EDGAR 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
+| P1 — LLM news classifier → auto supply_chain_events promotion | ✅ Complete |
+| P1 — Tier 2 seeds expanded (9 events: +consumer staples + labor strike + industrial REIT) | ✅ Complete |
+| P1 — SEC EDGAR Form 4 insider trades | ✅ Complete |
+| P1 — Form 13F institutional holdings, options flow | 🔲 Next |
 | P1 — Data Scraper TUI (`scraper_app.py`) | 🔲 Planned |
 | P2 — Database & Server TUI (`db_app.py`) | 🔲 Planned |
 | P3 — Screener, Calendar, Comparison, Picks, Reports, News tabs | ✅ Complete |
