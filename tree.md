@@ -76,6 +76,8 @@ StackScreener/
 │   ├── Research Reasearch reports_.jpg
 │   └── Prototype/
 │       └── stackscreener_full_ui_prototype.html
+├── models/                               ← quantized LLM weights (gitignored — generate locally)
+│   └── qwen2.5-7b-4bit/                  ← TurboQuant 4-bit output from `python src/llm.py --quantize`
 ├── READMETQ.md                           ← TurboQuant weight quantization reference (cksac/turboquant-model)
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code

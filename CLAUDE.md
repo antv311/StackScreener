@@ -75,6 +75,7 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `supply_chain.py` | P1 | Supply chain signal ingestion and sector mapping only |
 | `edgar.py` | P1 | SEC EDGAR pipeline: CIK seeding, XBRL facts, 10-K text extraction |
 | `news.py` | P1 | News/media aggregation + ticker tagging |
+| `llm.py` | P1 | LLM extraction pipeline — TurboQuant quantization, inference, 3 extraction tasks |
 | `inst_flow.py` | P1 | Congressional trades (Senate + House) + SEC Form 4/13F ingestion |
 | `scraper_app.py` | P1 | Data Scraper TUI — logs, manual triggers, source manager, LLM panel |
 | `db_app.py` | P2 | Database & Server TUI — SQL shell, table browser, API server controls |

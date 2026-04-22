@@ -77,7 +77,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 | SEC EDGAR Form 4 — insider buy/sell filings | 🔲 Next |
 | SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
 | yfinance options chain — basic options flow | 🔲 Planned |
-| LLM extraction — Qwen2.5-32B + TurboQuant 4-bit (P40 GPU) | 🔲 Pending test bed |
+| `llm.py` — extraction pipeline built (3 tasks: news / 10-K / 8-K) | 🔲 Model pending download |
 | Automated supply chain event ingestion | 🔲 Planned |
 | `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
 
@@ -104,6 +104,18 @@ and enrichment. Operators run this to keep the database current and add new sour
 - [x] `db.get_stocks_by_china_exposure()` — query by China revenue threshold
 - [x] `db.get_china_revenue_map()` — bulk map for scoring
 - [x] `db.get_active_china_events()` — active China/Taiwan events for dampening logic
+
+### LLM Extraction Pipeline
+
+- [x] `llm.py` — TurboQuant 4-bit quantization wrapper + three extraction tasks
+- [x] Task 1: news disruption classifier → `supply_chain_events` candidate JSON
+- [x] Task 2: 10-K supplier/customer extractor → `edgar_facts` entity JSON
+- [x] Task 3: 8-K material event parser → `supply_chain_events` candidate JSON
+- [x] Validation test suite (`--test`) with ground-truth pass/fail for all three tasks
+- [ ] Download + quantize Qwen2.5-7B-Instruct (`python src/llm.py --quantize`)
+- [ ] Run `--test` and validate all three tasks pass on 7B
+- [ ] Wire news classifier output into `supply_chain_events` auto-creation
+- [ ] Wire 8-K parser into `edgar.py --fetch-8k` pipeline
 
 ### News Aggregation
 
@@ -398,6 +410,10 @@ Friends can create accounts and run their own scans.
 | `openai-whisper` | Podcast transcription | P1 |
 | `pypdf` | WSJ PDF text extraction | P1 |
 | `torch` | Whisper backend (custom cp314 wheel) | P1 |
+| `transformers` | Model loading for LLM pipeline | P1 |
+| `accelerate` | GPU device_map for transformers | P1 |
+| `turboquant-model` | TurboQuant 4-bit weight quantization (cksac/turboquant-model) | P1 |
+| `xformers` | Memory-efficient attention (cp314 wheel available) | P1 |
 | `requests` | HTTP — SEC EDGAR, congressional trade APIs | P1 |
 | `textual` | Terminal UI framework | P1, P2, P3 |
 | `cryptography` | Fernet encryption | Shared core |

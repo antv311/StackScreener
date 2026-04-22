@@ -137,7 +137,15 @@ Qwen2.5-7B (test) / 32B (prod) + TurboQuant 4-bit → LLM extraction pipeline [P
 **LLM stack decision (April 2026):** Qwen2.5 family selected unanimously across independent
 evaluations. TurboQuant weight quantization (cksac/turboquant-model, 4-bit g=128 + CuTile
 kernel) fits the 32B model in ~20GB VRAM on the P40. Test bed runs Qwen2.5-7B-Instruct on
-the 8GB laptop first. See `todonext.md` LLM section and `READMETQ.md` for full details.
+the 8GB RTX 3080 laptop GPU first. `src/llm.py` is built — run `python src/llm.py --quantize`
+to download and quantize, then `--test` to validate all three extraction tasks.
+See `todonext.md` LLM section and `READMETQ.md` for full details.
+
+**Available cp314 wheels (pre-built, Windows amd64):**
+- `torch-2.12.0a0+gitfafc7d6` — installed
+- `xformers-0.0.35+6e9337ce` — memory-efficient attention, install before running LLM
+- `tvdcn-1.1.0` — torchvision deformable convolutions
+- `opencv_python-4.13.0.92` — computer vision (future use)
 
 ---
 
@@ -159,6 +167,7 @@ StackScreener/
 │   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + customer %
 │   ├── inst_flow.py                ← congressional trades (Senate + House) + Form 4/13F [PARTIAL — P1 next]
 │   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
 │   ├── scraper_app.py              ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   ├── — P2: DATABASE & SERVER —
 │   ├── db_app.py                   ← Database & Server TUI entry point                   [PLANNED — P2]
