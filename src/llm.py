@@ -17,8 +17,6 @@ CLI:
 
 import argparse
 import json
-import os
-import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -136,7 +134,8 @@ def _infer(model, tokenizer, system_prompt: str, user_content: str) -> str:
     text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    inputs = tokenizer(text, return_tensors="pt").to(_get_device())
+    device = next(model.parameters()).device
+    inputs = tokenizer(text, return_tensors="pt").to(device)
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,

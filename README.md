@@ -26,7 +26,7 @@ Signal layers in the composite score:
 | **EDGAR geographic revenue** | SEC XBRL — China/US/Europe exposure + 10-K risk flags | ✅ Live |
 | **News aggregation** | WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Live |
 | **Congressional trades** | Senate/House Stock Watcher (free APIs) | ✅ Live |
-| **LLM extraction** | Qwen2.5-7B→32B + TurboQuant 4-bit — news/8-K/10-K parsing | 🔲 In progress |
+| **LLM extraction** | Qwen2.5-7B→32B + TurboQuant 4-bit — news/8-K/10-K parsing | ✅ 3/3 validated (7B) |
 | **SEC insider filings** | EDGAR Form 4 + 13F (free) | 🔲 Next |
 
 ---
@@ -86,7 +86,7 @@ Web prototype (React/JSX) is in [`StackScreenerCD/`](StackScreenerCD/).
 |---|---|
 | Shared core — DB, scoring engine, scan runner | ✅ Complete |
 | P1 — Enricher, EDGAR, news, supply chain, congressional trades | ✅ Core complete |
-| P1 — LLM extraction pipeline (`llm.py`) — model pending download | 🔲 In progress |
+| P1 — LLM extraction pipeline — 3/3 tasks validated on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
 | P1 — SEC Form 4 insider trades, Form 13F, options flow | 🔲 Next |
 | P1 — Data Scraper TUI (`scraper_app.py`) | 🔲 Planned |
 | P2 — Database & Server TUI (`db_app.py`) | 🔲 Planned |

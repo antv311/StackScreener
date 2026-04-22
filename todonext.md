@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-22
+> Last updated: 2026-04-22 (session 3)
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -88,81 +88,44 @@ would have filed an 8-K within 4 business days.
 
 ---
 
-## LLM Sub-Project — Model Decision & Test Plan (2026-04-21)
+## LLM Sub-Project — DONE (2026-04-22)
 
-All three independent evaluations (Claude, Grok, Gemini) converged on the same answer.
-Decision is locked. Document the approach here before the sub-project opens formally.
+**3/3 validation tasks passed** on Qwen2.5-7B-Instruct TurboQuant 4-bit (8GB RTX 3080).
 
----
+| Task | Result | Time | Key output |
+|---|---|---|---|
+| News disruption classifier | PASS | 1066s | `event_type: fire`, `PLD` ticker, `Fontana CA`, confidence 0.9 |
+| 10-K entity extractor | PASS | 1756s | `china_exposure: 0.19`, `single_source_risk: true`, TSMC supplier |
+| 8-K material event parser | PASS | 3146s | `event_type: fire`, `$45M loss`, `tissue paper`, `supply_chain_relevant: true` |
 
-### Model Selection
+Slow on 8GB (PyTorch fallback, no CuTile kernel). P40 + 32B will be faster.
+Prompt library transfers 1:1 to 32B — same Qwen2ForCausalLM architecture.
 
-**Winner: Qwen2.5 family (Qwen2ForCausalLM architecture)**
+### VRAM Constraints — READ BEFORE RUNNING
 
-Rationale: best-in-class structured JSON output, strong instruction adherence, 128K context
-window, financial/SEC domain knowledge, and local deployment viability. The only alternative
-worth benchmarking later is **DeepSeek-R1-Distill-Qwen-32B** (same architecture, R1 reasoning
-chain distilled in — better on ambiguous classification edge cases, same VRAM profile).
+- **Only one LLM process at a time.** Two simultaneous processes fill VRAM (7.7/8GB),
+  deadlock each other, and produce no output.
+- `load_quantized()` with `device='cuda'` allocates 14GB bf16 scaffold first — OOM on 8GB.
+  Fixed in `load_model()`: CPU load → patch index caching → move quantized weights to CUDA.
+- `_cached_indices` accumulates unpacked indices for all 196 layers (~20GB total).
+  Fixed via `_prepare_for_inference()` no-cache monkey-patch in `llm.py`.
 
----
+### Model Reference
 
-### Quantization: TurboQuant (cksac/turboquant-model)
+**Winner:** Qwen2.5 family (Qwen2ForCausalLM). TurboQuant 4-bit g=128 + Hadamard rotation.
+NOT Ollama/GGUF compatible — native PyTorch only. vLLM PR #38171 open, not merged.
 
-Adaptation of Zandieh et al. (2025) from KV-cache compression to model weight compression.
-Drop-in `nn.Linear` replacement. Post-training quantization — no calibration dataset needed.
-Reference: `READMETQ.md` in repo root.
+| Hardware | Model | VRAM | Status |
+|---|---|---|---|
+| 8GB RTX 3080 | Qwen2.5-7B-Instruct 4-bit | ~4.6GB | ✅ validated |
+| P40 (24GB) | Qwen2.5-32B-Instruct 4-bit | ~20GB | pending P40 arrival |
 
-Key benchmarks at scale (Qwen2.5-32B):
-- 4+4 residual (8-bit): PPL 14.28 vs 14.29 baseline — near-lossless. ~36GB VRAM.
-- **4-bit g=128 + CuTile: PPL +2.3. ~20GB VRAM. Target config for P40.**
+### Next: Wire LLM into pipeline
 
-Fused kernel priority: CuTile > Triton > PyTorch fallback. Use Hadamard rotation
-(`--rotation hadamard`) — same quality as QR, O(d) storage vs O(d²).
-
-**Deployment constraint:** NOT compatible with Ollama or standard GGUF.
-Requires native PyTorch + CuTile/Triton environment.
-vLLM integration: PR #38171 open, not yet merged. Custom inference wrapper needed.
-
----
-
-### VRAM Targets
-
-| Hardware | Model | Config | VRAM | KV Headroom | Verdict |
-|---|---|---|---|---|---|
-| 8GB laptop | Qwen2.5-7B-Instruct | 4-bit g=128 CuTile | ~4.4GB | ~3.5GB | ✓ test bed |
-| P40 (24GB) | Qwen2.5-32B-Instruct | 4-bit g=128 CuTile | ~20GB | ~4GB | ✓ production |
-| P40 (24GB) | Qwen2.5-32B-Instruct | 4+4 residual | ~36GB | none | ✗ too big |
-
----
-
-### Test Bed — "1995 Corolla" (8GB Laptop)
-
-**Model:** Qwen2.5-7B-Instruct, TurboQuant 4-bit g=128, CuTile kernel
-**Purpose:** Validate the full pipeline before committing P40 cycles to 32B inference.
-Same Qwen2ForCausalLM architecture — all prompt code transfers 1:1 to production.
-
-Install:
-```bash
-uv pip install -e ".[transformers]"
-turboquant quantize --model Qwen/Qwen2.5-7B-Instruct --output ./quantized \
-    --bit-width 4 --rotation hadamard
 ```
-
-**Three validation tasks (warehouse fire gaps → extraction tests):**
-
-1. **News disruption classifier** — feed headline + body → expect structured JSON:
-   `{"is_supply_chain": true, "event_type": "fire", "severity": "HIGH", "sectors": [...]}`
-   Ground truth: known disruption articles from `news_articles` table.
-
-2. **10-K supplier/customer extractor** — feed short 10-K risk paragraph → expect:
-   `{"suppliers": [...], "customers": [...], "china_exposure": 0.19}`
-   Ground truth: verify against XBRL edgar_facts for the same ticker.
-
-3. **8-K material event parser** — feed mock 8-K Item 8.01 fire filing → expect:
-   `{"event_type": "facility_fire", "location": "California", "ticker_hint": "...", "severity": "HIGH"}`
-
-Pass criteria: all three return valid JSON matching the target schema with no hallucinated
-company names or tickers. If 7B passes, 32B inherits the prompt library unchanged.
+fetch_articles() → news_articles → classify_news()
+    → if is_supply_chain=True and confidence>0.7 → create supply_chain_events candidate
+```
 
 ---
 
@@ -230,3 +193,84 @@ This closes Gap 1 from the warehouse fire smoke test end-to-end.
 ### P3 — Logistics World Map
 - ASCII/Unicode region markers for active supply chain events
 - Click marker → filter Logistics table to that event
+
+---
+
+## Supply Chain Coverage Gaps — All Three Streams (2026-04-22)
+
+StackScreener is designed to detect disruptions across the full supply chain, not just
+maritime/geopolitical. Current Tier 2 seeds are macro-only (6 geopolitical events).
+These gaps represent the coverage holes across upstream, midstream, and downstream.
+
+---
+
+### Upstream Gaps (raw materials, energy, agriculture, suppliers)
+
+**What we're missing:**
+- Agricultural weather signals — USDA weekly crop condition reports (drought/frost/flooding
+  affecting corn, soy, wheat) feed directly into food/bev and consumer staples chains
+- Energy production disruptions — EIA weekly petroleum inventory surprises; LNG facility
+  outages; refinery fires (these are 8-K filings waiting to be parsed)
+- Mining/metals disruptions — copper mine strikes, lithium facility shutdowns affect
+  semiconductors, EVs, defense; no automated detection today
+- Single-source supplier shutdown — 10-K extractor identifies dependencies; next step is
+  wiring extracted supplier names into `event_stocks` auto-linkage
+
+**Candidate data sources (all free):**
+- USDA NASS crop reports: `https://api.nass.usda.gov/api/get`
+- EIA weekly petroleum: `https://api.eia.gov/v2/petroleum/sum/snd/w/` (free key)
+- LLM classifier on AP/GDELT news already catches many of these once wired
+
+---
+
+### Midstream Gaps (transportation, processing, chokepoints)
+
+**What we're missing:**
+- Live vessel traffic at chokepoints — 10 critical routes identified; no real-time counts
+- Port congestion data — Port of LA/Long Beach, Rotterdam, Singapore are the three that move
+  US equity prices; no automated signal today
+- Panama Canal daily draft restrictions — Canal Authority publishes free; 2023 drought cut
+  max draft and was a direct, clean supply constraint signal with almost no noise
+
+**Candidate data sources:**
+- **AISHub** (best free option) — requires cheap AIS antenna to share data; gives full
+  global API access in return. 10 chokepoints to monitor:
+  Strait of Hormuz · Strait of Malacca · Suez Canal · Bab el-Mandeb · Taiwan Strait ·
+  English Channel · Strait of Gibraltar · Turkish Straits · Danish Straits · Panama Canal
+- **MarineTraffic API** — pay-per-call; no hardware needed
+- **Panama Canal Authority** — free daily vessel/draft data at `https://www.pancanal.com`
+- Port congestion: MarineTraffic or individual port authority feeds
+
+**Implementation sketch:**
+```python
+# logistics.py (new module)
+def fetch_chokepoint_vessel_counts() -> dict:
+    # poll AISHub for vessel count in each chokepoint bounding box
+    # compare to 30-day rolling baseline
+    # if count < baseline * 0.6 → HIGH severity event candidate
+
+def fetch_panama_draft_restriction() -> dict:
+    # poll Canal Authority daily
+    # if max_draft < historical_avg - 1ft → MEDIUM severity
+```
+
+---
+
+### Downstream Gaps (warehousing, distribution, retail)
+
+**What we're missing:**
+- 8-K material event pipeline — fires, floods, facility losses that REITs must file within
+  4 business days; this is Gap 5 from the warehouse fire smoke test (see above)
+- REIT entity resolution — "warehouse in Fontana" → PLD owner → tenants → product categories;
+  requires either LLM extraction from 10-K or a third-party facility database
+- Consumer staples Tier 2 seeds — toilet paper → warehouse REIT → retail vendor chain has
+  zero representation in current 6-event seed (Gap 4 from smoke test)
+- Retail disruption signals — store closure announcements, inventory shortage disclosures
+
+**Next actionable steps:**
+1. `edgar.py --fetch-8k` — poll EDGAR full-text search for recent 8-K filings per ticker;
+   parse Item 1.05 (cybersecurity) and Item 8.01 (other events); keyword-flag fire/flood/facility
+2. Extend `supply_chain.py --seed-tier2` with consumer staples + industrial REIT chains
+3. LLM 10-K extractor already built — wire supplier names into `event_stocks` auto-creation
+
+---

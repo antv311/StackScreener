@@ -77,7 +77,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 | SEC EDGAR Form 4 — insider buy/sell filings | 🔲 Next |
 | SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
 | yfinance options chain — basic options flow | 🔲 Planned |
-| `llm.py` — extraction pipeline built (3 tasks: news / 10-K / 8-K) | 🔲 Model pending download |
+| `llm.py` — 3 tasks validated 3/3 on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
 | Automated supply chain event ingestion | 🔲 Planned |
 | `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
 
@@ -112,9 +112,9 @@ and enrichment. Operators run this to keep the database current and add new sour
 - [x] Task 2: 10-K supplier/customer extractor → `edgar_facts` entity JSON
 - [x] Task 3: 8-K material event parser → `supply_chain_events` candidate JSON
 - [x] Validation test suite (`--test`) with ground-truth pass/fail for all three tasks
-- [ ] Download + quantize Qwen2.5-7B-Instruct (`python src/llm.py --quantize`)
-- [ ] Run `--test` and validate all three tasks pass on 7B
-- [ ] Wire news classifier output into `supply_chain_events` auto-creation
+- [x] Download + quantize Qwen2.5-7B-Instruct (`python src/llm.py --quantize`) — 4.6 GB
+- [x] Run `--test` — all three tasks pass (1066s / 1756s / 3146s; PyTorch fallback on 8GB)
+- [ ] Wire news classifier into `supply_chain_events` auto-creation (post-ingest hook)
 - [ ] Wire 8-K parser into `edgar.py --fetch-8k` pipeline
 
 ### News Aggregation
@@ -124,7 +124,12 @@ and enrichment. Operators run this to keep the database current and add new sour
 - [x] Yahoo Finance news via `yf.Ticker().news` (per ticker or full watchlist)
 - [x] Ticker mention detection — regex against full 6,900-ticker set, common words filtered
 - [x] Signals stored in `source_signals` (one row per ticker per article)
-- [x] All 7 RSS feed URLs verified live (April 2026)
+- [x] AP News RSS (business + finance + technology feeds)
+- [x] CNBC RSS (US business + finance feeds)
+- [x] MarketWatch RSS (top stories)
+- [x] NewsAPI.org REST (aggregates AP, Reuters + 150k sources; free tier; requires key)
+- [x] Reuters via NewsAPI (domains=reuters.com filter; Reuters discontinued public RSS 2023)
+- [x] GDELT Project REST (global event database; free, no key; strong on physical disruptions)
 
 ### Institutional Flow
 
@@ -171,8 +176,9 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P1 — Backlog / Enhancements
 
-- **News source expansion** — AP + Reuters RSS, NewsAPI.org (aggregates 150k+ sources, free
-  tier), GDELT Project (global event DB, free) — gates LLM classifier real-world validation
+- **Three-stream coverage gaps** — upstream (USDA crop/EIA energy/mining), midstream (AIS
+  chokepoints/Panama Canal/port congestion), downstream (8-K fire pipeline/REIT entity
+  resolution/consumer staples Tier 2 seeds) — see `todonext.md` for full breakdown
 - Automated supply chain event ingestion (worldmonitor-osint or news scraping)
 - Automated refresh on app startup or scheduled trigger
 - Earnings call transcript ingestion (via SEC EDGAR or podcast feeds)
@@ -395,7 +401,7 @@ Friends can create accounts and run their own scans.
 | Item | Status |
 |---|---|
 | Supply chain event auto-ingestion source | TBD — worldmonitor-osint vs news scraping |
-| NVIDIA P40 GPU arrival | Pending — gates Qwen2.5-32B production inference (P1); 7B test bed runs on 8GB laptop first |
+| NVIDIA P40 GPU arrival | Pending — gates Qwen2.5-32B production inference; 7B validated 3/3 on 8GB laptop |
 | Ubuntu deployment environment | TBD — VPS, home server, or cloud |
 | REST API authentication design | Deferred to Project 2 |
 

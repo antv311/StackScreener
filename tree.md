@@ -17,7 +17,7 @@ StackScreener/
 │   ├── supply_chain.py                   ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
 │   ├── inst_flow.py                      ← congressional trades (Senate + House) + Form 4/13F  [PARTIAL — P1 next]
-│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
 │   ├── scraper_app.py                    ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   │

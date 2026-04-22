@@ -130,15 +130,19 @@ SEC EDGAR Form 13F            → institutional holdings [P1 planned]
 SEC EDGAR 8-K                 → material events (fires, facility losses) [P1 planned]
 WSJ/MS/MF podcasts (Whisper)  → transcript news signals (news.py — built)
 WSJ PDF + Yahoo Finance news  → article signals (news.py — built)
+AP News / CNBC / MarketWatch  → RSS article feeds (news.py — built)
+NewsAPI.org (AP+Reuters+150k) → REST API, free tier (news.py — built; requires key)
+GDELT Project                 → global event database, free (news.py — built)
 worldmonitor-osint            → supply chain events [P1 planned]
-Qwen2.5-7B (test) / 32B (prod) + TurboQuant 4-bit → LLM extraction pipeline [P1 sub-project]
+AIS maritime chokepoints      → vessel traffic at Hormuz/Malacca/Suez/etc [P1 planned]
+Panama Canal Authority        → daily draft restrictions [P1 planned]
+Qwen2.5-7B validated 3/3 / 32B (prod) + TurboQuant 4-bit → LLM extraction (llm.py — built)
 ```
 
-**LLM stack decision (April 2026):** Qwen2.5 family selected unanimously across independent
-evaluations. TurboQuant weight quantization (cksac/turboquant-model, 4-bit g=128 + CuTile
-kernel) fits the 32B model in ~20GB VRAM on the P40. Test bed runs Qwen2.5-7B-Instruct on
-the 8GB RTX 3080 laptop GPU first. `src/llm.py` is built — run `python src/llm.py --quantize`
-to download and quantize, then `--test` to validate all three extraction tasks.
+**LLM stack decision (April 2026):** Qwen2.5 family selected unanimously. TurboQuant 4-bit
+g=128 + Hadamard rotation. `src/llm.py` built and **validated 3/3** on Qwen2.5-7B-Instruct
+(8GB RTX 3080). Model at `models/qwen2.5-7b-4bit/` (4.6GB). P40 + 32B is production target.
+**VRAM rule: only one LLM process at a time** — two processes fill 8GB VRAM and deadlock.
 See `todonext.md` LLM section and `READMETQ.md` for full details.
 
 **Available cp314 wheels (pre-built, Windows amd64):**
