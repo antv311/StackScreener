@@ -171,9 +171,10 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P1 — Backlog / Enhancements
 
+- **News source expansion** — AP + Reuters RSS, NewsAPI.org (aggregates 150k+ sources, free
+  tier), GDELT Project (global event DB, free) — gates LLM classifier real-world validation
 - Automated supply chain event ingestion (worldmonitor-osint or news scraping)
 - Automated refresh on app startup or scheduled trigger
-- Reuters RSS feed ingestion
 - Earnings call transcript ingestion (via SEC EDGAR or podcast feeds)
 - Sentiment scoring on news articles (local model, no API cost)
 - Supply chain event confidence scoring using LLM + EDGAR cross-reference

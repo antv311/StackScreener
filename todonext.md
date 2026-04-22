@@ -166,6 +166,63 @@ company names or tickers. If 7B passes, 32B inherits the prompt library unchange
 
 ---
 
+---
+
+## News Source Expansion — Widen the Net (2026-04-22)
+
+**Problem:** WSJ still hasn't covered the California warehouse fire. The LLM classifier
+(`llm.py` Task 1) can only process articles that are already in `news_articles`. If the
+ingestion layer misses the event, the classifier never sees it — so the supply chain event
+never gets created regardless of how good the model is. This is a data coverage gap, not a
+model gap.
+
+**Why this blocks the LLM test:** The warehouse fire smoke test revealed the aggregator
+missed the event entirely. Until we have broader source coverage, the LLM validation test
+suite is running against a biased sample (only WSJ/MS/MF content). We need AP and Reuters
+in the pipeline before the LLM results mean anything at scale.
+
+---
+
+### Sources to Add (all free tiers available)
+
+| Source | Method | Why |
+|---|---|---|
+| **AP News** | RSS feeds (free, no key) | Breaks physical events (fires, floods, strikes) faster than WSJ |
+| **Reuters** | RSS feeds (free, no key) | Global commodity + logistics coverage; strong on port/shipping |
+| **NewsAPI.org** | REST API (free tier: 100 req/day) | Aggregates AP, Reuters + 150k sources; single integration point |
+| **GDELT Project** | REST API (free, no key) | Global event database; specifically strong on geopolitical/disaster signals |
+| **CNBC** | RSS feeds (free, no key) | Fast on market-moving supply chain stories |
+| **MarketWatch** | RSS feeds (free, no key) | Strong on commodity + sector rotation coverage |
+
+**Recommended integration order:**
+1. **NewsAPI.org** first — one integration covers AP + Reuters + most others; free tier is enough to validate
+2. **GDELT** second — purpose-built for event detection, perfect feed for `supply_chain_events` auto-creation
+3. Individual RSS (AP, Reuters, CNBC, MarketWatch) — add after NewsAPI proves value
+
+---
+
+### What needs to change in code
+
+- `news.py` — add `fetch_newsapi(query, api_key)` and `fetch_gdelt(keywords)` functions
+- `db.py` — no schema changes; `news_articles` already has `source` column for new sources
+- `screener_config.py` — add `NEWS_SOURCE_AP`, `NEWS_SOURCE_REUTERS`, `NEWS_SOURCE_NEWSAPI`,
+  `NEWS_SOURCE_GDELT` constants; add GDELT base URL constant
+- `api_keys` table — store NewsAPI key via `db.set_api_key()` (free key, still encrypted)
+- After ingestion: new articles flow through `llm.py classify_news()` automatically
+
+---
+
+### LLM Integration Note
+
+Once broader sources are ingested, add a post-ingest step to `news.py`:
+```
+fetch_articles() → insert into news_articles → run classify_news() on new rows
+    → if is_supply_chain=True and confidence>0.7 → create supply_chain_events candidate
+```
+This closes Gap 1 from the warehouse fire smoke test end-to-end.
+
+---
+
 ## Other Items Queued
 
 ### P1 — Form 4 Insider Trades
