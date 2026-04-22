@@ -18,6 +18,7 @@ StackScreener/
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
 │   ├── inst_flow.py                      ← congressional trades (Senate + House) + Form 4/13F  [PARTIAL — P1 next]
 │   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
 │   ├── scraper_app.py                    ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   │
 │   │  ── PROJECT 2: DATABASE & SERVER ─────────────────────────────────────

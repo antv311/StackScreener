@@ -15,6 +15,9 @@ stackscreener.db
 # Scan output
 src/Results/
 
+# Quantized LLM model weights (large — download + quantize locally)
+models/
+
 # News media (large files)
 src/News/audio/
 src/News/pdfs/

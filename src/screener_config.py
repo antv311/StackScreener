@@ -154,6 +154,15 @@ WSJ_PODCAST_FEEDS: list[str] = [
 MORGAN_STANLEY_PODCAST_FEED: str = "https://rss.art19.com/thoughts-on-the-market"
 MOTLEY_FOOL_PODCAST_FEED:    str = "https://feeds.megaphone.fm/ARML8165884693"
 
+# ── LLM Extraction Pipeline ───────────────────────────────────────────────────
+# Test bed: Qwen2.5-7B-Instruct, TurboQuant 4-bit g=128 Hadamard (~4.4 GB VRAM)
+# Production: Qwen2.5-32B-Instruct on P40 (~20 GB VRAM) — same constants
+LLM_MODEL_ID:       str = "Qwen/Qwen2.5-7B-Instruct"
+LLM_QUANTIZED_DIR:  str = "models/qwen2.5-7b-4bit"   # relative to repo root
+LLM_BIT_WIDTH:      int = 4
+LLM_GROUP_SIZE:     int = 128
+LLM_MAX_NEW_TOKENS: int = 512
+
 # ── Attribution ────────────────────────────────────────────────────────────────
 DEFAULT_AUTHOR: str = "StackScreener"
 
