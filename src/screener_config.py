@@ -254,6 +254,42 @@ PROVIDER_SEC_EDGAR: str = "sec_edgar"  # provider name for Form 4 + 8-K source_s
 
 LLM_CLASSIFY_CONFIDENCE_THRESHOLD: float = 0.7  # min confidence to auto-promote to supply_chain_events
 
+# ── Options Flow ───────────────────────────────────────────────────────────────
+SIGNAL_OPTIONS_UNUSUAL: str = "unusual_options"
+OPTIONS_CALL_SCORE:     float = 65.0   # bullish unusual call volume signal
+OPTIONS_PUT_SCORE:      float = 30.0   # bearish unusual put volume signal
+OPTIONS_VOLUME_MULT:    float = 3.0    # flag if volume > N × open_interest (proxy for baseline)
+OPTIONS_MIN_VOLUME:     int   = 500    # ignore tiny contracts (noise filter)
+OPTIONS_LOOKBACK_DAYS:  int   = 90     # how far back to look for stale signals
+PROVIDER_OPTIONS:       str   = "yfinance_options"
+
+# ── Form 13F Institutional Holdings ───────────────────────────────────────────
+SIGNAL_INST_BUY:        str   = "inst_buy"
+SIGNAL_INST_SELL:       str   = "inst_sell"
+INST_BUY_SCORE:         float = 60.0   # sub_score for institutional position increase
+INST_SELL_SCORE:        float = 30.0   # sub_score for institutional position decrease
+FORM13F_LOOKBACK_DAYS:  int   = 120    # re-fetch when quarterly filing is stale
+PROVIDER_13F:           str   = "sec_13f"
+
+# Top institutional investment managers by AUM — CIK zero-padded to 10 digits.
+# Source: SEC EDGAR EDGAR filer lookup. Expand as needed.
+INSTITUTION_CIKS: list[tuple[str, str]] = [
+    ("0001067983", "Berkshire Hathaway"),
+    ("0001364742", "BlackRock"),
+    ("0000102909", "Vanguard Group"),
+    ("0000093751", "State Street"),
+    ("0000080255", "T. Rowe Price"),
+    ("0000315066", "Fidelity (FMR)"),
+    ("0000914208", "Invesco"),
+    ("0000886982", "Goldman Sachs Asset Mgmt"),
+    ("0000895421", "JP Morgan Asset Mgmt"),
+    ("0001166559", "Citadel Advisors"),
+    ("0001423053", "Renaissance Technologies"),
+    ("0001037389", "D.E. Shaw"),
+    ("0001336528", "AQR Capital Mgmt"),
+    ("0001113838", "Two Sigma Investments"),
+]
+
 # ── WSJ PDF Fetcher ────────────────────────────────────────────────────────────
 # Chrome profile that is already logged into WSJ — use login.py in WSJbot to refresh session.
 WSJ_CHROME_PROFILE_DIR:  str = r"C:\Users\tony\WSJbot\chromeprofile"

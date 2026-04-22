@@ -864,6 +864,15 @@ def get_all_signal_scores() -> list[dict]:
     )
 
 
+def signal_exists_by_url(source: str, signal_url: str) -> bool:
+    """Return True if a signal with this source + signal_url already exists."""
+    rows = query(
+        "SELECT 1 FROM source_signals WHERE source = ? AND signal_url = ?",
+        (source, signal_url),
+    )
+    return len(rows) > 0
+
+
 # ── Research Reports ───────────────────────────────────────────────────────────
 
 def insert_research_report(data: dict) -> int:

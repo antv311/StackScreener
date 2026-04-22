@@ -75,8 +75,8 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `supply_chain.py` — 6 curated events, 37 company links, Tier 1 matching | ✅ Complete |
 | `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Built (Phase 3 wiring) |
 | `inst_flow.py --form4` — SEC EDGAR Form 4 insider buy/sell trades | ✅ Complete |
-| SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
-| yfinance options chain — basic options flow | 🔲 Planned |
+| `inst_flow.py --form13f` — SEC EDGAR Form 13F institutional holdings (14 institutions) | ✅ Complete |
+| `inst_flow.py --options` — yfinance unusual call/put volume detection | ✅ Complete |
 | `llm.py` — 3 tasks validated 3/3 on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
 | `edgar.py --fetch-8k` — 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
 | `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
@@ -143,12 +143,28 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 ## P1 — Next Up
 
-### SEC EDGAR Form 4 — Insider Trades ✅ Built
+### SEC EDGAR Form 4 — Insider Trades ✅ Complete
 
 - [x] `inst_flow.py --form4` — EDGAR EFTS search → XML parse → source_signals
 - [x] Parse: insider name/title, transaction type (A=buy/D=sell), shares, price, date
-- [x] Store in `source_signals` with `signal_type = 'insider_buy'` / `'insider_sell'`
-- [ ] Wire SIGNAL_INSIDER_BUY / SIGNAL_INSIDER_SELL into composite score in `screener.py`
+- [x] Dedup by signal_url — safe to re-run
+- [x] Auto-wired into composite score via `source_signals.sub_score` aggregation
+
+### SEC EDGAR Form 13F — Institutional Holdings ✅ Complete
+
+- [x] `inst_flow.py --form13f` — fetch latest 13F-HR for 14 configured institutions
+- [x] Parse infotable XML: nameOfIssuer, CUSIP, value, shares
+- [x] Fuzzy name-match to stocks table via normalised company_name
+- [x] Compare vs prior stored holdings → new/increased = inst_buy, decreased/exited = inst_sell
+- [x] Dedup by signal_url — safe to re-run
+
+### yfinance Options Flow ✅ Complete
+
+- [x] `inst_flow.py --options` — nearest-expiration options chain via yfinance
+- [x] Flag: volume > 3× open interest AND >= 500 contracts
+- [x] Call unusual → `unusual_options` signal (score 65); put unusual → (score 30)
+- [x] Dedup by signal_url — safe to re-run
+- [x] `--tickers` flag for targeted scanning; `--limit N` for universe cap
 
 ### SEC EDGAR Form 13F — Institutional Holdings
 
@@ -178,7 +194,6 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P1 — Backlog / Enhancements
 
-- Wire Form 4 insider trades into composite score (SIGNAL_INSIDER_BUY weight in screener.py)
 - **Three-stream coverage gaps** — upstream (USDA crop/EIA energy/mining), midstream (AIS
   chokepoints/Panama Canal/port congestion), downstream (REIT entity resolution via 10-K LLM)
   — 8-K pipeline, Gap 1 (LLM classifier), Gap 2 (event types), Gap 4 (consumer staples seeds),

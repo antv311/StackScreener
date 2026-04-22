@@ -16,7 +16,7 @@ StackScreener/
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
 │   ├── supply_chain.py                   ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
-│   ├── inst_flow.py                      ← congressional trades (Senate + House) + Form 4 insider trades (EDGAR EFTS)
+│   ├── inst_flow.py                      ← congressional trades + Form 4 insider trades + Form 13F + options flow
 │   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
 │   ├── scraper_app.py                    ← Data Scraper TUI entry point                        [PLANNED — P1]
@@ -140,6 +140,9 @@ Tables must be created in this order (FK dependencies):
 | `python src/news.py --classify` | P1 | Run LLM classifier on unclassified articles → supply_chain_events |
 | `python src/edgar.py --fetch-8k` | P1 | Scan recent 8-K filings for material supply-chain events |
 | `python src/inst_flow.py --form4` | P1 | Fetch EDGAR Form 4 insider trades → source_signals |
+| `python src/inst_flow.py --form13f` | P1 | Fetch Form 13F holdings for 14 institutions → position diff → source_signals |
+| `python src/inst_flow.py --options` | P1 | Scan yfinance options chains for unusual volume (>3× OI) → source_signals |
+| `python src/inst_flow.py --options --tickers AAPL MSFT` | P1 | Options scan for specific tickers only |
 | `python src/screener_run.py` | Shared | Run a full NSR scan — scores all active stocks |
 | `python src/screener_run.py --mode thematic` | Shared | Supply-chain-aware scan (filtered universe) |
 | `python src/screener_run.py --limit N --top 25` | Shared | Limit universe + show top 25 |

@@ -649,12 +649,15 @@ def fetch_8k_filings(limit: int | None = None) -> None:
             if not event:
                 continue
 
-            events_found.append({**event, "filing_date": filing["filing_date"]})
-
-            # Build EDGAR filing URL for source_signals
-            accn_path = filing["accession"].replace("-", "")
-            cik_int   = str(int(stock["cik"]))
+            # Build EDGAR filing URL for dedup + source_signals
+            accn_path  = filing["accession"].replace("-", "")
+            cik_int    = str(int(stock["cik"]))
             filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn_path}/{filing['primary_doc']}"
+
+            if db.signal_exists_by_url(PROVIDER_SEC_EDGAR, filing_url):
+                continue  # already stored from a previous run
+
+            events_found.append({**event, "filing_date": filing["filing_date"]})
 
             reason = (
                 f"{stock['ticker']} 8-K ({filing['filing_date']}): "
@@ -671,8 +674,8 @@ def fetch_8k_filings(limit: int | None = None) -> None:
                 "fetched_at":  now,
             })
 
-            # Promote to supply_chain_events candidate if severity is HIGH+
-            if event["severity"] in (SEVERITY_HIGH,):
+            # Promote to supply_chain_events candidate if severity is HIGH
+            if event["severity"] == SEVERITY_HIGH:
                 sc_event = {
                     "title":               f"{event['event_type'].replace('_', ' ').title()} — {stock['ticker']}",
                     "region":              "United States",

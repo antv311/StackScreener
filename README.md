@@ -29,7 +29,8 @@ Signal layers in the composite score:
 | **LLM extraction** | Qwen2.5-7B→32B + TurboQuant 4-bit — news/8-K/10-K parsing | ✅ 3/3 validated (7B) |
 | **8-K material events** | EDGAR 8-K — fire/flood/recall/cyber keyword scanner | ✅ Live |
 | **SEC insider trades** | EDGAR Form 4 — insider buy/sell signals | ✅ Live |
-| **SEC Form 13F** | Institutional holdings (quarterly) | 🔲 Next |
+| **SEC Form 13F** | Institutional holdings — 14 major institutions, position change detection | ✅ Live |
+| **Options flow** | yfinance unusual call/put volume (>3× open interest) | ✅ Live |
 
 ---
 
@@ -93,7 +94,8 @@ Web prototype (React/JSX) is in [`StackScreenerCD/`](StackScreenerCD/).
 | P1 — LLM news classifier → auto supply_chain_events promotion | ✅ Complete |
 | P1 — Tier 2 seeds expanded (9 events: +consumer staples + labor strike + industrial REIT) | ✅ Complete |
 | P1 — SEC EDGAR Form 4 insider trades | ✅ Complete |
-| P1 — Form 13F institutional holdings, options flow | 🔲 Next |
+| P1 — Form 13F institutional holdings (14 institutions, position diff) | ✅ Complete |
+| P1 — Options flow (yfinance unusual call/put volume) | ✅ Complete |
 | P1 — Data Scraper TUI (`scraper_app.py`) | 🔲 Planned |
 | P2 — Database & Server TUI (`db_app.py`) | 🔲 Planned |
 | P3 — Screener, Calendar, Comparison, Picks, Reports, News tabs | ✅ Complete |

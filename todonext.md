@@ -191,17 +191,13 @@ This closes Gap 1 from the warehouse fire smoke test end-to-end.
 ### P1 — Form 4 Insider Trades — ✅ BUILT (2026-04-22)
 - `python src/inst_flow.py --form4` — EDGAR EFTS search + XML parse → source_signals
 - Scores: insider_buy=70, insider_sell=20 (in screener_config.py)
-- **Next:** Wire SIGNAL_INSIDER_BUY / SIGNAL_INSIDER_SELL into `screener.py` composite score
+### P1 — Form 13F Institutional Holdings — ✅ BUILT (2026-04-22)
+- `python src/inst_flow.py --form13f` — 14 configured institutions, position diff → source_signals
+- `INSTITUTION_CIKS` list in `screener_config.py` — extend as needed
 
-### P1 — Form 13F Institutional Holdings
-- `inst_flow.py --form13f`
-- Quarterly 13F filings → institutional position changes per ticker
-- Store in `source_signals` with `signal_type = 'inst_buy'` / `'inst_sell'`
-
-### P1 — Options Flow Detection
-- `inst_flow.py --options`
-- yfinance options chain: flag unusual put/call volume vs. 20-day avg
-- Store in `source_signals` with `signal_type = 'options_unusual'`
+### P1 — Options Flow Detection — ✅ BUILT (2026-04-22)
+- `python src/inst_flow.py --options` — yfinance options chain, flags volume > 3× open interest
+- `--tickers AAPL MSFT` for targeted scan; `--limit N` to cap universe
 
 ### P3 — Home Heatmap
 - Full-width market heatmap (tiles color-coded by % change, sized by market cap)
