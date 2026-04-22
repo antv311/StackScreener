@@ -75,6 +75,7 @@ StackScreener/
 │   ├── Research Reasearch reports_.jpg
 │   └── Prototype/
 │       └── stackscreener_full_ui_prototype.html
+├── READMETQ.md                           ← TurboQuant weight quantization reference (cksac/turboquant-model)
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
 ├── ROADMAP.md                            ← 4-project roadmap with per-project status + backlogs

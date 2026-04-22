@@ -77,7 +77,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 | SEC EDGAR Form 4 — insider buy/sell filings | 🔲 Next |
 | SEC EDGAR Form 13F — institutional holdings | 🔲 Planned |
 | yfinance options chain — basic options flow | 🔲 Planned |
-| EDGAR LLM extraction — Llama 3.1 70B via Ollama (P40 GPU) | 🔲 Pending GPU |
+| LLM extraction — Qwen2.5-32B + TurboQuant 4-bit (P40 GPU) | 🔲 Pending test bed |
 | Automated supply chain event ingestion | 🔲 Planned |
 | `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
 
@@ -382,7 +382,7 @@ Friends can create accounts and run their own scans.
 | Item | Status |
 |---|---|
 | Supply chain event auto-ingestion source | TBD — worldmonitor-osint vs news scraping |
-| NVIDIA P40 GPU arrival | Pending — gates EDGAR LLM extraction (P1) |
+| NVIDIA P40 GPU arrival | Pending — gates Qwen2.5-32B production inference (P1); 7B test bed runs on 8GB laptop first |
 | Ubuntu deployment environment | TBD — VPS, home server, or cloud |
 | REST API authentication design | Deferred to Project 2 |
 

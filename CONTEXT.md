@@ -1,5 +1,6 @@
 # StackScreener — Project Context
 > Read this file at the start of every Claude Code session to get fully up to speed.
+> After reading this, read `todonext.md` for the detailed task queue and active diagnostics.
 
 ---
 
@@ -126,10 +127,17 @@ SEC EDGAR XBRL                → geographic revenue, customer concentration (ed
 SEC EDGAR 10-K text           → risk flags, customer % mentions (edgar.py — built)
 SEC EDGAR Form 4              → insider buy/sell filings [P1 next]
 SEC EDGAR Form 13F            → institutional holdings [P1 planned]
+SEC EDGAR 8-K                 → material events (fires, facility losses) [P1 planned]
 WSJ/MS/MF podcasts (Whisper)  → transcript news signals (news.py — built)
 WSJ PDF + Yahoo Finance news  → article signals (news.py — built)
 worldmonitor-osint            → supply chain events [P1 planned]
+Qwen2.5-7B (test) / 32B (prod) + TurboQuant 4-bit → LLM extraction pipeline [P1 sub-project]
 ```
+
+**LLM stack decision (April 2026):** Qwen2.5 family selected unanimously across independent
+evaluations. TurboQuant weight quantization (cksac/turboquant-model, 4-bit g=128 + CuTile
+kernel) fits the 32B model in ~20GB VRAM on the P40. Test bed runs Qwen2.5-7B-Instruct on
+the 8GB laptop first. See `todonext.md` LLM section and `READMETQ.md` for full details.
 
 ---
 

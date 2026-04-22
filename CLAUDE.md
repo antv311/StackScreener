@@ -1,9 +1,12 @@
 # CLAUDE.md — Coding Conventions for StackScreener
 
 This file tells Claude Code how to work on this project. Read it before making any changes.
-Always read `CONTEXT.md` first for full project context, and `ROADMAP.md` to confirm which
-project and backlog item is in scope before writing any code. Also review `tree.md` and
-`DATABASE.md` for the full file structure and schema.
+
+**Session start reading order:**
+1. `CONTEXT.md` — full project context and architecture
+2. `todonext.md` — detailed next-up tasks and active diagnostics ← **read this before touching any code**
+3. `ROADMAP.md` — confirm which project (P1/P2/P3/P4) owns the work and that it's in the backlog
+4. `tree.md` and `DATABASE.md` — file structure and schema
 
 The project is structured as four independent projects (P1 Data Scraper, P2 DB & Server,
 P3 Bloomberg TUI, P4 Web). Each has its own entry point and backlog in `ROADMAP.md`.
