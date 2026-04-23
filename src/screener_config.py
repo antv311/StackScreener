@@ -290,6 +290,63 @@ INSTITUTION_CIKS: list[tuple[str, str]] = [
     ("0001113838", "Two Sigma Investments"),
 ]
 
+# ── Home Heatmap ───────────────────────────────────────────────────────────────
+HEATMAP_DEFAULT_LIMIT:       int   = 200    # default tile count (all-stocks filter)
+HEATMAP_LARGE_CAP_THRESHOLD: float = 10e9   # $10B — Large Cap filter
+HEATMAP_MEGA_CAP_THRESHOLD:  float = 200e9  # $200B — Mega Cap filter
+HEATMAP_SP500_LIMIT:         int   = 500    # approx S&P 500 by top 500 market cap
+
+# ── USDA Crop Conditions (upstream commodity signals) ─────────────────────────
+USDA_API_BASE:             str   = "https://api.nass.usda.gov/api/get"
+USDA_API_KEY_NAME:         str   = "usda_nass"          # key stored in api_keys table
+SIGNAL_CROP_STRESS:        str   = "crop_stress"
+CROP_STRESS_SCORE:         float = 45.0
+CROP_GOOD_EXCELLENT_THRESHOLD: float = 0.05  # 5pp below 5-yr avg → signal
+PROVIDER_USDA:             str   = "usda_nass"
+
+# ── EIA Petroleum Inventory (upstream commodity signals) ──────────────────────
+EIA_API_BASE:              str   = "https://api.eia.gov/v2"
+EIA_API_KEY_NAME:          str   = "eia"                # key stored in api_keys table
+SIGNAL_OIL_INVENTORY:      str   = "oil_inventory_surprise"
+OIL_SURPRISE_SCORE:        float = 50.0
+OIL_SURPRISE_THRESHOLD:    float = 0.05  # ±5% vs 5-week rolling avg → signal
+PROVIDER_EIA:              str   = "eia"
+
+# ── AIS Chokepoint Monitoring (midstream vessel signals) ──────────────────────
+AIS_API_BASE:              str   = "wss://stream.aisstream.io/v0/stream"
+AIS_API_KEY_NAME:          str   = "aisstream"          # key stored in api_keys table
+AIS_SAMPLE_SECONDS:        int   = 60                   # websocket sample window
+CHOKEPOINT_BASELINE_DAYS:  int   = 30
+CHOKEPOINT_LOW_THRESHOLD:  float = 0.6    # < 60% of baseline → HIGH severity
+SIGNAL_CHOKEPOINT:         str   = "chokepoint_congestion"
+CHOKEPOINT_SCORE:          float = 60.0
+PROVIDER_AIS:              str   = "aisstream"
+
+# ── Panama Canal Draft Restrictions ───────────────────────────────────────────
+PANAMA_STATS_URL:          str   = "https://www.pancanal.com/eng/op/aqRestricciones.html"
+PANAMA_API_KEY_NAME:       str   = "panama_canal"       # unused — public endpoint
+SIGNAL_CANAL_DRAFT:        str   = "canal_draft_restriction"
+CANAL_DRAFT_SCORE:         float = 55.0
+CANAL_DRAFT_LOW_THRESHOLD: float = 12.0   # max draft (metres) below this → HIGH
+CANAL_NORMAL_DRAFT:        float = 13.4   # historical normal max draft (metres)
+PROVIDER_PANAMA:           str   = "panama_canal"
+
+# ── Chokepoint definitions ────────────────────────────────────────────────────
+# Each entry: lat/lon centre + bounding box for AIS vessel counting.
+# Also used by the TUI world-map to place markers.
+CHOKEPOINTS: dict[str, dict] = {
+    "Strait of Hormuz":    {"lat": 26.6,  "lon":  56.3, "lat_min": 26.0, "lat_max": 27.5, "lon_min": 55.5, "lon_max": 57.5},
+    "Strait of Malacca":   {"lat":  2.5,  "lon": 102.0, "lat_min":  1.0, "lat_max":  6.0, "lon_min": 99.0, "lon_max": 104.5},
+    "Suez Canal":          {"lat": 30.5,  "lon":  32.3, "lat_min": 29.0, "lat_max": 32.5, "lon_min": 31.5, "lon_max": 33.0},
+    "Bab el-Mandeb":       {"lat": 12.5,  "lon":  43.4, "lat_min": 11.5, "lat_max": 13.0, "lon_min": 42.5, "lon_max": 44.0},
+    "Taiwan Strait":       {"lat": 24.0,  "lon": 120.5, "lat_min": 22.0, "lat_max": 26.0, "lon_min": 119.5, "lon_max": 122.0},
+    "English Channel":     {"lat": 51.0,  "lon":   1.0, "lat_min": 50.0, "lat_max": 52.0, "lon_min":  -2.0, "lon_max":   3.0},
+    "Strait of Gibraltar": {"lat": 36.0,  "lon":  -5.5, "lat_min": 35.5, "lat_max": 36.5, "lon_min":  -6.0, "lon_max":  -5.0},
+    "Turkish Straits":     {"lat": 41.0,  "lon":  29.0, "lat_min": 40.5, "lat_max": 41.5, "lon_min":  28.5, "lon_max":  30.0},
+    "Panama Canal":        {"lat":  9.1,  "lon": -79.7, "lat_min":  8.5, "lat_max": 10.0, "lon_min": -80.5, "lon_max": -79.0},
+    "Danish Straits":      {"lat": 57.5,  "lon":  10.5, "lat_min": 55.5, "lat_max": 58.5, "lon_min":   9.5, "lon_max":  12.5},
+}
+
 # ── WSJ PDF Fetcher ────────────────────────────────────────────────────────────
 # Chrome profile that is already logged into WSJ — use login.py in WSJbot to refresh session.
 WSJ_CHROME_PROFILE_DIR:  str = r"C:\Users\tony\WSJbot\chromeprofile"

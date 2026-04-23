@@ -31,6 +31,10 @@ Signal layers in the composite score:
 | **SEC insider trades** | EDGAR Form 4 — insider buy/sell signals | ✅ Live |
 | **SEC Form 13F** | Institutional holdings — 14 major institutions, position change detection | ✅ Live |
 | **Options flow** | yfinance unusual call/put volume (>3× open interest) | ✅ Live |
+| **USDA crop conditions** | NASS weekly Good+Excellent % → upstream stress signals (free key) | ✅ Built |
+| **EIA petroleum inventory** | Weekly crude/gasoline stock surprise vs. 5-week avg (free key) | ✅ Built |
+| **AIS chokepoints** | aisstream.io vessel counts at 10 global chokepoints (free key) | ✅ Built |
+| **Panama Canal draft** | ACP draft restriction scrape → canal congestion signal | ✅ Built |
 
 ---
 
@@ -96,12 +100,14 @@ Web prototype (React/JSX) is in [`StackScreenerCD/`](StackScreenerCD/).
 | P1 — SEC EDGAR Form 4 insider trades | ✅ Complete |
 | P1 — Form 13F institutional holdings (14 institutions, position diff) | ✅ Complete |
 | P1 — Options flow (yfinance unusual call/put volume) | ✅ Complete |
+| P1 — USDA crop conditions + EIA petroleum (upstream commodity signals) | ✅ Complete |
+| P1 — AIS chokepoint monitoring + Panama Canal draft (midstream logistics) | ✅ Complete |
 | P1 — Data Scraper TUI (`scraper_app.py`) | 🔲 Planned |
 | P2 — Database & Server TUI (`db_app.py`) | 🔲 Planned |
 | P3 — Screener, Calendar, Comparison, Picks, Reports, News tabs | ✅ Complete |
 | P3 — Stock Quote Modal (Enter on Screener / Picks) | ✅ Complete |
-| P3 — Home heatmap | 🔲 Next |
-| P3 — Logistics world map | 🔲 Planned |
+| P3 — Home heatmap (tiles by % change, sized by market cap, click → StockQuoteModal) | ✅ Complete |
+| P3 — Logistics world map (ASCII equirectangular + coloured event markers) | ✅ Complete |
 | P4 — Web server + React frontend | 🔲 Planned |
 
 ---

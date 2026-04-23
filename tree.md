@@ -14,18 +14,20 @@ StackScreener/
 │   │
 │   │  ── PROJECT 1: DATA SCRAPER ────────────────────────────────────────────
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check
-│   ├── supply_chain.py                   ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
-│   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text (risk flags + customer %)
+│   ├── supply_chain.py                   ← Tier 2 curated seed (9 events, 51 links) + Tier 1 sector matching
+│   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + 10-K text + 8-K material events
 │   ├── inst_flow.py                      ← congressional trades + Form 4 insider trades + Form 13F + options flow
 │   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
+│   ├── commodities.py                    ← upstream commodity signals: USDA crop conditions + EIA petroleum inventory
+│   ├── logistics.py                      ← midstream vessel signals: AIS chokepoints (aisstream.io) + Panama Canal draft
 │   ├── scraper_app.py                    ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   │
 │   │  ── PROJECT 2: DATABASE & SERVER ─────────────────────────────────────
 │   ├── db_app.py                         ← Database & Server TUI entry point                   [PLANNED — P2]
 │   │
 │   │  ── PROJECT 3: BLOOMBERG TUI ──────────────────────────────────────────
-│   ├── app.py                            ← Bloomberg TUI — login, sidebar, all Research tabs + StockQuoteModal
+│   ├── app.py                            ← Bloomberg TUI — login, sidebar, Research tabs + Home heatmap + Logistics world map
 │   ├── pdf_generator.py                  ← PDF reports (fpdf2)                                 [PLANNED — P3]
 │   ├── mailer.py                         ← email delivery                                      [PLANNED — P4]
 │   │
@@ -143,6 +145,12 @@ Tables must be created in this order (FK dependencies):
 | `python src/inst_flow.py --form13f` | P1 | Fetch Form 13F holdings for 14 institutions → position diff → source_signals |
 | `python src/inst_flow.py --options` | P1 | Scan yfinance options chains for unusual volume (>3× OI) → source_signals |
 | `python src/inst_flow.py --options --tickers AAPL MSFT` | P1 | Options scan for specific tickers only |
+| `python src/commodities.py --usda-crops` | P1 | USDA NASS weekly crop conditions → crop_stress signals |
+| `python src/commodities.py --eia-petroleum` | P1 | EIA weekly petroleum inventory → oil_inventory_surprise signals |
+| `python src/commodities.py --all` | P1 | All commodity sources |
+| `python src/logistics.py --chokepoints` | P1 | AIS vessel counts at 10 global chokepoints → chokepoint_congestion signals |
+| `python src/logistics.py --panama` | P1 | Panama Canal draft restriction scrape → canal_draft_restriction signals |
+| `python src/logistics.py --all` | P1 | All logistics sources |
 | `python src/screener_run.py` | Shared | Run a full NSR scan — scores all active stocks |
 | `python src/screener_run.py --mode thematic` | Shared | Supply-chain-aware scan (filtered universe) |
 | `python src/screener_run.py --limit N --top 25` | Shared | Limit universe + show top 25 |

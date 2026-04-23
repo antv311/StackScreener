@@ -39,6 +39,8 @@ from screener_config import (
     MORGAN_STANLEY_PODCAST_FEED,
     MOTLEY_FOOL_PODCAST_FEED,
     SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW,
+    HEATMAP_DEFAULT_LIMIT, HEATMAP_LARGE_CAP_THRESHOLD,
+    HEATMAP_MEGA_CAP_THRESHOLD, HEATMAP_SP500_LIMIT,
 )
 
 # ── Formatting helpers ─────────────────────────────────────────────────────────
@@ -1225,18 +1227,235 @@ class ResearchReportsTab(ScrollableContainer):
 #  CONTENT PANELS
 # ══════════════════════════════════════════════════════════════════════════════
 
-class HomePanel(ScrollableContainer):
+# ── Heatmap tile ───────────────────────────────────────────────────────────────
+
+_HEAT_COLORS: list[tuple[float, str]] = [
+    ( 3.0, "#0d5c0d"),
+    ( 1.5, "#165e16"),
+    ( 0.3, "#1e4d1e"),
+    ( 0.0, "#2a2a2a"),  # near-flat
+    (-1.5, "#4d1e1e"),
+    (-3.0, "#5e1616"),
+    (-9e9, "#6b0d0d"),
+]
+
+
+def _heat_bg(pct: float | None) -> str:
+    if pct is None:
+        return "#1a1a1a"
+    for threshold, color in _HEAT_COLORS:
+        if pct >= threshold:
+            return color
+    return _HEAT_COLORS[-1][1]
+
+
+class HeatmapTile(Static):
+    """Single stock tile in the home heatmap grid."""
+
+    can_focus = True
+
+    DEFAULT_CSS = """
+    HeatmapTile {
+        width: 1fr;
+        height: 4;
+        padding: 0 1;
+        content-align: left top;
+    }
+    HeatmapTile:focus { border: solid $primary; }
+    HeatmapTile:hover { opacity: 0.85; }
+    """
+
+    def __init__(self, stock: dict, **kwargs) -> None:
+        self._stock   = stock
+        self._ticker  = stock["ticker"]
+        pct           = stock.get("change_pct") or 0.0
+        sign          = "+" if pct >= 0 else ""
+        lines = [
+            f" {self._ticker[:8]}",
+            f" {sign}{pct:.1f}%",
+            f" {_fmt_mcap(stock.get('market_cap'))}",
+        ]
+        super().__init__("\n".join(lines), **kwargs)
+
+    def on_mount(self) -> None:
+        self.styles.background = _heat_bg(self._stock.get("change_pct"))
+
+    def on_click(self) -> None:
+        self.app.push_screen(StockQuoteModal(self._ticker))
+
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            self.app.push_screen(StockQuoteModal(self._ticker))
+
+
+# ── World map ──────────────────────────────────────────────────────────────────
+
+_MAP_W = 74
+_MAP_H = 18
+
+
+def _build_base_map() -> list[list[str]]:
+    """Build 74×18 equirectangular ASCII base map (1 col≈5°lon, 1 row≈10°lat)."""
+    grid: list[list[str]] = [[" "] * _MAP_W for _ in range(_MAP_H)]
+
+    def fill(c0: int, c1: int, r0: int, r1: int) -> None:
+        for r in range(max(0, r0), min(_MAP_H, r1 + 1)):
+            for c in range(max(0, c0), min(_MAP_W, c1 + 1)):
+                grid[r][c] = "~"
+
+    # North America
+    fill(3,  9,  1, 2)    # Alaska
+    fill(7,  22, 2, 7)    # Canada + US
+    fill(12, 17, 6, 8)    # Mexico
+    fill(14, 18, 7, 8)    # C. America
+    fill(15, 23, 8, 13)   # South America
+    fill(16, 19, 13, 14)  # Patagonia
+    fill(22, 30, 0, 2)    # Greenland
+    # Europe
+    fill(33, 36, 2, 4)    # UK/Ireland
+    fill(35, 43, 1, 2)    # Scandinavia
+    fill(36, 44, 2, 5)    # W/C Europe
+    # Africa + Middle East
+    fill(32, 47, 5, 10)   # N Africa / Sahara
+    fill(38, 51, 4, 5)    # Turkey / Caucasus
+    fill(40, 51, 5, 9)    # Arabia / NE Africa
+    fill(40, 50, 9, 14)   # C + S Africa
+    fill(51, 53, 10, 12)  # Madagascar
+    # Russia / Eurasia
+    fill(42, 74, 0, 4)    # Russia / Siberia
+    fill(44, 66, 4, 5)    # Central Asia
+    # India
+    fill(50, 57, 5, 9)    # Indian subcontinent
+    # China + East Asia
+    fill(52, 68, 3, 7)    # China
+    fill(64, 72, 3, 6)    # Korea + Japan
+    # SE Asia + Indonesia
+    fill(57, 68, 7, 11)   # Indochina / SE Asia
+    fill(61, 68, 9, 11)   # Borneo
+    fill(60, 66, 10, 11)  # Java
+    # Australia + NZ
+    fill(60, 71, 10, 15)  # Australia
+    fill(70, 73, 13, 15)  # New Zealand
+
+    return grid
+
+
+_BASE_MAP_GRID: list[list[str]] = _build_base_map()
+
+
+def _latlon_to_xy(lat: float, lon: float) -> tuple[int, int]:
+    x = int((lon + 180) / 360 * _MAP_W)
+    y = int((90  - lat) / 180 * _MAP_H)
+    return (max(0, min(_MAP_W - 1, x)), max(0, min(_MAP_H - 1, y)))
+
+
+class WorldMap(Static):
+    """ASCII equirectangular world map with coloured event markers."""
+
+    DEFAULT_CSS = """
+    WorldMap {
+        height: 20;
+        padding: 0 1;
+        border-bottom: solid $border;
+        background: $surface-darken-2;
+    }
+    """
+
+    def __init__(self, events: list[dict], **kwargs) -> None:
+        super().__init__("", **kwargs)
+        self._events = events
+
+    def on_mount(self) -> None:
+        self._render()
+
+    def update_events(self, events: list[dict]) -> None:
+        self._events = events
+        self._render()
+
+    def _render(self) -> None:
+        grid = [list(row) for row in _BASE_MAP_GRID]
+
+        marker_map: dict[tuple[int, int], str] = {}
+        for ev in self._events:
+            lat = ev.get("lat")
+            lon = ev.get("lon")
+            if lat is None or lon is None:
+                continue
+            x, y   = _latlon_to_xy(float(lat), float(lon))
+            sev    = ev.get("severity") or ""
+            color  = _SEVERITY_COLOR.get(sev, "white")
+            marker_map[(y, x)] = color
+
+        text = Text()
+        for r, row in enumerate(grid):
+            for c, char in enumerate(row):
+                marker_color = marker_map.get((r, c))
+                if marker_color:
+                    text.append("●", style=f"bold {marker_color}")
+                elif char == "~":
+                    text.append(char, style="dim green")
+                else:
+                    text.append(char)
+            text.append("\n")
+
+        # Legend line
+        for sev, color in _SEVERITY_COLOR.items():
+            text.append(f" ● {sev}", style=f"bold {color}")
+        text.append("\n")
+
+        self.update(text)
+
+
+# ── Home panel ─────────────────────────────────────────────────────────────────
+
+_HEATMAP_FILTERS: list[tuple[str, str]] = [
+    ("All",       "hf-all"),
+    ("Large Cap", "hf-largecap"),
+    ("Mega Cap",  "hf-megacap"),
+    ("S&P ≈500",  "hf-sp500"),
+    ("Watchlist", "hf-watchlist"),
+]
+
+
+class HomePanel(Vertical):
     CSS = """
-    HomePanel { padding: 2; }
-    .panel-title { text-style: bold; color: $primary; margin-bottom: 1; }
+    HomePanel { height: 1fr; padding: 0; }
+    #home-stats {
+        height: auto;
+        padding: 0 2;
+        color: $text-muted;
+        background: $surface-darken-1;
+        border-bottom: solid $border;
+    }
+    #home-filter-row {
+        height: 3;
+        padding: 0 1;
+        background: $surface-darken-1;
+        border-bottom: solid $border;
+    }
+    #home-filter-row Button { margin-right: 1; min-width: 12; height: 2; }
+    #heatmap-scroller { height: 1fr; }
+    #heatmap-grid {
+        layout: grid;
+        grid-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+        grid-gutter: 1;
+        padding: 1;
+        height: auto;
+    }
     """
 
     def compose(self) -> ComposeResult:
-        yield Label("HOME — Market Overview", classes="panel-title")
-        yield Label("Loading...", id="home-stats")
+        yield Static("Loading…", id="home-stats")
+        with Horizontal(id="home-filter-row"):
+            for label, btn_id in _HEATMAP_FILTERS:
+                variant = "primary" if label == "All" else "default"
+                yield Button(label, id=btn_id, variant=variant)
+        with ScrollableContainer(id="heatmap-scroller"):
+            yield Container(id="heatmap-grid")
 
     def on_mount(self) -> None:
         self._load_stats()
+        self._load_heatmap("All")
 
     def _load_stats(self) -> None:
         try:
@@ -1247,24 +1466,58 @@ class HomePanel(ScrollableContainer):
                 "SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0 AND last_enriched_at IS NOT NULL"
             )
             last_scan = scans[0] if scans else None
-            lines = [
-                f"Active stocks:    {total['n'] if total else '?'}",
-                f"Enriched:         {enriched['n'] if enriched else '?'}",
-                f"Active SC events: {len(events)}",
+            parts = [
+                f"Stocks: {total['n'] if total else '?'} active",
+                f"  Enriched: {enriched['n'] if enriched else '?'}",
+                f"  SC events: {len(events)}",
             ]
             if last_scan:
-                lines += [
-                    "",
-                    f"Last scan:  #{last_scan['scan_uid']}  mode={last_scan['scan_mode']}",
-                    f"  Scored:   {last_scan.get('scored_count') or 0}",
-                    f"  Status:   {last_scan['status']}",
-                    f"  At:       {(last_scan.get('started_at') or '')[:19]}",
-                ]
-            else:
-                lines.append("\nNo scans run yet.  Run: python screener_run.py")
-            self.query_one("#home-stats", Label).update("\n".join(lines))
+                parts.append(
+                    f"  Last scan #{last_scan['scan_uid']}"
+                    f"  mode={last_scan['scan_mode']}"
+                    f"  scored={last_scan.get('scored_count') or 0}"
+                    f"  {(last_scan.get('started_at') or '')[:10]}"
+                )
+            self.query_one("#home-stats", Static).update("  " + "  |  ".join(parts))
         except Exception as e:
-            self.query_one("#home-stats", Label).update(f"Error: {e}")
+            self.query_one("#home-stats", Static).update(f"  Error: {e}")
+
+    def _load_heatmap(self, mode: str) -> None:
+        limit        = HEATMAP_DEFAULT_LIMIT
+        min_mcap     = None
+        watchlist_only = False
+        match mode:
+            case "Large Cap": min_mcap = HEATMAP_LARGE_CAP_THRESHOLD
+            case "Mega Cap":  min_mcap = HEATMAP_MEGA_CAP_THRESHOLD
+            case "S&P ≈500":  limit    = HEATMAP_SP500_LIMIT
+            case "Watchlist": watchlist_only = True
+
+        stocks = db.get_heatmap_stocks(limit=limit, min_mcap=min_mcap, watchlist_only=watchlist_only)
+        grid   = self.query_one("#heatmap-grid", Container)
+        grid.remove_children()
+
+        # Highlight active filter button
+        for label, btn_id in _HEATMAP_FILTERS:
+            try:
+                btn = self.query_one(f"#{btn_id}", Button)
+                btn.variant = "primary" if label == mode else "default"
+            except Exception:
+                pass
+
+        if not stocks:
+            grid.mount(Label("  No change data yet — run: python src/enricher.py"))
+            return
+
+        for stock in stocks:
+            grid.mount(HeatmapTile(stock))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        match event.button.id:
+            case "hf-all":      self._load_heatmap("All")
+            case "hf-largecap": self._load_heatmap("Large Cap")
+            case "hf-megacap":  self._load_heatmap("Mega Cap")
+            case "hf-sp500":    self._load_heatmap("S&P ≈500")
+            case "hf-watchlist":self._load_heatmap("Watchlist")
 
 
 class ResearchPanel(Vertical):
@@ -1357,8 +1610,13 @@ class LogisticsPanel(Vertical):
         overflow-y: auto;
     }
     #logi-right { width: 1fr; height: 1fr; }
+    #logi-map-wrap {
+        height: 22;
+        border-bottom: solid $border;
+        overflow: hidden;
+    }
     #logi-detail {
-        height: 8;
+        height: 7;
         padding: 1 2;
         background: $surface-darken-1;
         border-bottom: solid $border;
@@ -1375,6 +1633,7 @@ class LogisticsPanel(Vertical):
         with Horizontal(id="logi-body"):
             yield ScrollableContainer(id="logi-event-list")
             with Vertical(id="logi-right"):
+                yield Container(id="logi-map-wrap")
                 yield Static("Select an event from the list.", id="logi-detail")
                 yield DataTable(id="logi-companies", cursor_type="row")
 
@@ -1384,9 +1643,15 @@ class LogisticsPanel(Vertical):
         self._load_events()
 
     def _load_events(self) -> None:
-        events = db.get_active_events()
+        events     = db.get_active_events()
         event_list = self.query_one("#logi-event-list", ScrollableContainer)
+        map_wrap   = self.query_one("#logi-map-wrap", Container)
+
         event_list.remove_children()
+        map_wrap.remove_children()
+
+        map_wrap.mount(WorldMap(events, id="logi-world-map"))
+
         if not events:
             event_list.mount(Label("  No active supply chain events.", id="logi-empty"))
             return

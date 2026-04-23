@@ -199,14 +199,30 @@ This closes Gap 1 from the warehouse fire smoke test end-to-end.
 - `python src/inst_flow.py --options` — yfinance options chain, flags volume > 3× open interest
 - `--tickers AAPL MSFT` for targeted scan; `--limit N` to cap universe
 
-### P3 — Home Heatmap
-- Full-width market heatmap (tiles color-coded by % change, sized by market cap)
-- Index selector: S&P 500 / DOW / Russell 1000 / Recommended / All
-- Click tile → `StockQuoteModal`
+### P3 — Home Heatmap — ✅ BUILT (2026-04-23)
+- `HeatmapTile` widget: ticker + % change + market cap, background color by pct
+- Filter buttons: All / Large Cap / Mega Cap / S&P ≈500 / Watchlist
+- 8-column CSS grid layout in `HomePanel`, click/Enter → `StockQuoteModal`
+- DB helper: `db.get_heatmap_stocks(limit, min_mcap, watchlist_only)`
 
-### P3 — Logistics World Map
-- ASCII/Unicode region markers for active supply chain events
-- Click marker → filter Logistics table to that event
+### P3 — Logistics World Map — ✅ BUILT (2026-04-23)
+- `WorldMap(Static)` widget: 74×18 equirectangular ASCII map + coloured `●` event markers
+- `_build_base_map()` programmatically fills landmass regions at module load
+- Severity colour legend rendered below map
+- Mounted inside `LogisticsPanel` above event detail; updated on `_load_events()`
+
+### P1 — USDA Crop Conditions + EIA Petroleum — ✅ BUILT (2026-04-23)
+- `commodities.py --usda-crops` — USDA NASS weekly G+E % per crop → `crop_stress` signals
+- `commodities.py --eia-petroleum` — EIA crude/gasoline weekly surprise → `oil_inventory_surprise`
+- Both require free API keys stored in `api_keys` table
+- Sub-scores: crop_stress=45 (±10 by severity), oil_surprise=50 (draw) / 30 (build)
+
+### P1 — AIS Chokepoints + Panama Canal Draft — ✅ BUILT (2026-04-23)
+- `logistics.py --chokepoints` — aisstream.io WebSocket, 60s sample, 10 chokepoints
+- Baseline rolling avg from stored signals; alert at < 60% → `chokepoint_congestion`
+- `logistics.py --panama` — scrapes ACP restrictions page, flags draft < 12 m
+- Both promote HIGH/CRITICAL events to `supply_chain_events` (status=monitoring)
+- `CHOKEPOINTS` dict in `screener_config.py` shared with TUI world map markers
 
 ---
 

@@ -656,6 +656,28 @@ def get_recent_scans(limit: int = 10) -> list[dict]:
     return query("SELECT * FROM scans ORDER BY started_at DESC LIMIT ?", (limit,))
 
 
+def get_heatmap_stocks(
+    limit: int = 200,
+    min_mcap: float | None = None,
+    watchlist_only: bool = False,
+) -> list[dict]:
+    """Return stocks for the home heatmap, sorted by market_cap descending."""
+    where = ["delisted = 0", "change_pct IS NOT NULL"]
+    params: list = []
+    if min_mcap is not None:
+        where.append("market_cap >= ?")
+        params.append(min_mcap)
+    if watchlist_only:
+        where.append("is_watched = 1")
+    params.append(limit)
+    return query(
+        f"SELECT stock_uid, ticker, company_name, sector, market_cap, change_pct, price "
+        f"FROM stocks WHERE {' AND '.join(where)} "
+        f"ORDER BY market_cap DESC NULLS LAST LIMIT ?",
+        params,
+    )
+
+
 # ── Scan Results ───────────────────────────────────────────────────────────────
 
 def insert_scan_result(data: dict) -> int:
