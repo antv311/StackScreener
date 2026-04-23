@@ -186,6 +186,27 @@ This closes Gap 1 from the warehouse fire smoke test end-to-end.
 
 ---
 
+## Session 7 Work — DONE (2026-04-23)
+
+| Item | Files Changed | What It Does |
+|---|---|---|
+| LLM job queue | db.py | `enqueue/dequeue/complete/fail/stats` helpers; `llm_jobs` table was already created |
+| DB browser helpers | db.py | `get_table_names`, `browse_table`, `execute_raw_sql` (SELECT-only guard) |
+| `FILINGS_CACHE_DIR` | screener_config.py | `"src/filings"` constant |
+| Filing cache | edgar.py | `_cache_path/_read/_write`; 10-K and 8-K text saved to disk on first fetch; cache-first on re-runs |
+| LLM enqueue gate | edgar.py | HIGH/CRITICAL 8-K hits now enqueue `parse_8k` job instead of calling LLM inline |
+| `--worker` mode | llm.py | `run_worker()` + `_dispatch_job()`; loads model once, drains queue one job at a time |
+| Enqueue refactor | news.py | `classify_unclassified_articles()` now enqueues `classify_news` jobs instead of calling LLM inline |
+| `scraper_app.py` | new | P1 Data Scraper TUI — 15 pipeline buttons, live log tail, queue tab, sources tab with Add Key |
+| `db_app.py` | new | P2 Database TUI — table browser (PgUp/PgDn), SQL shell (↑/↓ history), stats tab |
+| Filings tab | app.py | 5th tab in `StockQuoteModal` — lists cached `.txt` files, click to preview first 3,000 chars |
+| README | README.md | Full rewrite — TUI docs, CLI reference, API keys table, updated status table |
+
+### Known Issue Logged
+- API key provider names (`aisstream`, `newsapi`, `usda`, `eia`) are hardcoded strings in each module — violates no-hardcoding rule. Fix: move to `screener_config.py` constants + dropdown in scraper_app Sources tab. Tracked in ROADMAP P1 Next Up.
+
+---
+
 ## Other Items Queued
 
 ### P1 — Form 4 Insider Trades — ✅ BUILT (2026-04-22)

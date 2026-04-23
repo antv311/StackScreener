@@ -72,7 +72,8 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `enricher.py` — fundamentals + IPO calendar + price history | ✅ Complete |
 | `edgar.py` — CIK seed + XBRL geographic revenue + 10-K text flags | ✅ Complete |
 | `edgar.py --fetch-8k` — 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
-| `news.py` — WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT | ✅ Complete |
+| `news.py` — WSJ/MS/MF podcasts (Whisper) + Yahoo + AP + CNBC + MW + NewsAPI + GDELT | ✅ Complete |
+| `news.py` — WSJ newspaper PDF ingestion (pypdf) | 🔲 Blocked — WSJ PDF is scanned images; needs OCR |
 | `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
 | `supply_chain.py` — 9 curated events, 51 company links, Tier 1 matching | ✅ Complete |
 | `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Complete |
@@ -80,9 +81,11 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `inst_flow.py --form13f` — SEC EDGAR Form 13F institutional holdings (14 institutions) | ✅ Complete |
 | `inst_flow.py --options` — yfinance unusual call/put volume (>3× OI) | ✅ Complete |
 | `llm.py` — 3 tasks validated 3/3 on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
+| `llm.py --worker` — SQLite job queue worker; serialises LLM jobs, prevents VRAM deadlock | ✅ Complete |
+| `edgar.py` — local filing cache (`src/filings/10k/` + `src/filings/8k/`) | ✅ Complete |
 | `commodities.py` — USDA crop conditions + EIA petroleum inventory signals | ✅ Complete |
 | `logistics.py` — AIS chokepoints (10 routes) + Panama Canal draft restriction | ✅ Complete |
-| `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
+| `scraper_app.py` — Data Scraper TUI (pipeline buttons, log tail, queue tab, sources tab) | ✅ Complete |
 
 ---
 
@@ -123,7 +126,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 ### News Aggregation
 
 - [x] `news.py` — WSJ podcasts (2 feeds), Morgan Stanley, Motley Fool via RSS + Whisper
-- [x] WSJ newspaper PDF ingestion via `pypdf`
+- [ ] WSJ newspaper PDF ingestion — blocked: PDF is scanned images, pypdf returns empty text; needs OCR (Tesseract) to complete
 - [x] Yahoo Finance news via `yf.Ticker().news` (per ticker or full watchlist)
 - [x] Ticker mention detection — regex against full 6,900-ticker set, common words filtered
 - [x] Signals stored in `source_signals` (one row per ticker per article)
@@ -144,17 +147,15 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 ## P1 — Next Up
 
-### Data Scraper TUI (`scraper_app.py`)
+### API Key Provider Name Convention
 
-- [ ] Live log tail — enricher, EDGAR, news, inst_flow output streamed in real time
-- [ ] Manual trigger panel — run any pipeline step on demand with configurable args
-- [ ] Source manager — enable/disable sources, edit RSS feed URLs, set rate limits
-- [ ] LLM panel — Ollama model status, GPU memory, trigger `--extract-relationships`
+- [ ] Move all hardcoded provider name strings (`'aisstream'`, `'newsapi'`, `'usda'`, `'eia'`) out of module code into `screener_config.py` constants (e.g. `API_KEY_AISSTREAM`, `API_KEY_NEWSAPI`, etc.)
+- [ ] Sources tab in `scraper_app.py` should present a dropdown of known providers rather than a free-text field, so names can never diverge from what each module expects
+
+### Data Scraper TUI — Enhancements
+
+- [ ] Supply chain event editor — add/edit/retire events and company links from TUI
 - [ ] Data debugger — pick any ticker, inspect all DB fields, flag anomalies
-- [ ] Supply chain event editor — add/edit/retire events and company links
-
-**Exit criteria:** An operator can run any enrichment step, inspect the results, and
-debug bad data entirely from the TUI without touching the CLI.
 
 ---
 
@@ -188,8 +189,10 @@ debug bad data entirely from the TUI without touching the CLI.
 
 | Component | Status |
 |---|---|
-| SQLite layer — 16 tables, 8 indexes, all helpers | ✅ Complete |
-| `db_app.py` — Database TUI | 🔲 Planned |
+| SQLite layer — 18 tables, 9 indexes, all helpers | ✅ Complete |
+| LLM job queue helpers (`enqueue`, `dequeue`, `complete`, `fail`, `stats`) | ✅ Complete |
+| DB browser helpers (`get_table_names`, `browse_table`, `execute_raw_sql`) | ✅ Complete |
+| `db_app.py` — Database TUI (table browser, SQL shell, stats) | ✅ Complete |
 | REST API — FastAPI server | 🔲 Phase 5 |
 | Multi-user auth — API keys + JWT | 🔲 Phase 5 |
 
@@ -209,15 +212,11 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P2 — Next Up
 
-### Database TUI (`db_app.py`)
+### Database TUI — Enhancements
 
-- [ ] Interactive SQL shell — type a query, paginated results rendered as DataTable
-- [ ] Table browser — pick any of the 16 tables, page through rows, column filter
-- [ ] Schema viewer — show CREATE TABLE + indexes for any table
+- [ ] Schema viewer — show CREATE TABLE + indexes for any table from within TUI
 - [ ] Migration runner — show pending migrations, run with confirmation
-- [ ] API key manager — add/rotate/revoke encrypted API keys per user/provider
-- [ ] DB stats dashboard — row counts, DB file size, index usage, last enriched
-- [ ] Log viewer — tail enricher, EDGAR, news logs from within the TUI
+- [ ] Export query result to CSV from SQL shell
 
 ### REST API Server (Phase 5)
 
@@ -269,7 +268,7 @@ chain events, and manage watchlists from a polished terminal interface.
 | Research — Stock Picks tab | ✅ Complete |
 | Research — Research Reports tab | ✅ Complete |
 | Research — News tab | ✅ Complete |
-| Stock Quote Modal (Enter on any row) | ✅ Complete |
+| Stock Quote Modal — Overview, Signals, History, News, Filings tabs | ✅ Complete |
 | Home — Market heatmap (8-col tile grid, filter buttons, click → StockQuoteModal) | ✅ Complete |
 | Logistics — ASCII world map with coloured event markers | ✅ Complete |
 | Watchlist management | 🔲 Planned (Phase 1e) |
@@ -286,7 +285,7 @@ chain events, and manage watchlists from a polished terminal interface.
 - [x] Stock Picks — collapsible cards, per-source signal breakdown
 - [x] Research Reports — tagged cards from `research_reports` table
 - [x] News tab — filterable by source, headline + ticker display
-- [x] Stock Quote Modal — 4 tabs: Overview (40+ fields), Signals, History, News
+- [x] Stock Quote Modal — 5 tabs: Overview (40+ fields), Signals, History, News, Filings (cached 10-K/8-K preview)
   - Trigger: Enter on Screener row; "Open Quote →" button in Stock Picks cards
   - All data from DB, no network calls on open
 - [x] Home heatmap — `HeatmapTile` 8-col CSS grid, bg color by `change_pct`, filter buttons, click → modal

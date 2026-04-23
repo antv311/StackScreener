@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -41,6 +42,7 @@ from screener_config import (
     SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW,
     HEATMAP_DEFAULT_LIMIT, HEATMAP_LARGE_CAP_THRESHOLD,
     HEATMAP_MEGA_CAP_THRESHOLD, HEATMAP_SP500_LIMIT,
+    FILINGS_CACHE_DIR,
 )
 
 # ── Formatting helpers ─────────────────────────────────────────────────────────
@@ -107,10 +109,13 @@ class StockQuoteModal(ModalScreen[None]):
     }
     #quote-tabs { height: 1fr; }
     TabPane { height: 1fr; padding: 1 2; }
-    #qt-overview { height: 1fr; overflow-y: auto; }
-    #qt-signals  { height: 1fr; }
-    #qt-history  { height: 1fr; }
-    #qt-news     { height: 1fr; overflow-y: auto; }
+    #qt-overview  { height: 1fr; overflow-y: auto; }
+    #qt-signals   { height: 1fr; }
+    #qt-history   { height: 1fr; }
+    #qt-news      { height: 1fr; overflow-y: auto; }
+    #qt-filings   { height: 1fr; layout: vertical; }
+    #qt-filings-table { height: 8; }
+    #qt-filing-text { height: 1fr; overflow-y: auto; }
     """
 
     def __init__(self, ticker: str) -> None:
@@ -133,6 +138,12 @@ class StockQuoteModal(ModalScreen[None]):
                     yield ScrollableContainer(
                         Static("", id="qt-news-content"), id="qt-news"
                     )
+                with TabPane("Filings"):
+                    with Vertical(id="qt-filings"):
+                        yield DataTable(id="qt-filings-table", cursor_type="row")
+                        yield ScrollableContainer(
+                            Static("", id="qt-filing-text-content"), id="qt-filing-text"
+                        )
 
     def on_mount(self) -> None:
         self._load()
@@ -149,6 +160,7 @@ class StockQuoteModal(ModalScreen[None]):
         self._render_signals(stock)
         self._render_history(stock)
         self._render_news(stock)
+        self._render_filings(stock)
 
     # ── header ─────────────────────────────────────────────────────────────────
 
@@ -352,6 +364,53 @@ class StockQuoteModal(ModalScreen[None]):
             parts.append("")
 
         self.query_one("#qt-news-content", Static).update("\n".join(parts))
+
+    # ── filings ────────────────────────────────────────────────────────────────
+
+    def _render_filings(self, s: dict) -> None:
+        tbl    = self.query_one("#qt-filings-table", DataTable)
+        ticker = s["ticker"]
+        tbl.clear(columns=True)
+        tbl.add_columns("Type", "File", "Size")
+
+        cache_root = Path(FILINGS_CACHE_DIR)
+        entries: list[tuple[str, Path]] = []
+        for subdir in ("10k", "8k"):
+            folder = cache_root / subdir
+            if folder.exists():
+                for f in sorted(folder.glob(f"{ticker}_*.txt")):
+                    entries.append((subdir.upper(), f))
+
+        if not entries:
+            self.query_one("#qt-filing-text-content", Static).update(
+                f"  No cached filings for {ticker}.\n\n"
+                "  Run:  python src/edgar.py --fetch-filings   (10-K)\n"
+                "        python src/edgar.py --fetch-8k         (8-K)"
+            )
+            return
+
+        self._filing_paths: list[Path] = []
+        for kind, path in entries:
+            size_kb = path.stat().st_size // 1024
+            tbl.add_row(kind, path.name, f"{size_kb} KB")
+            self._filing_paths.append(path)
+
+        # Show first filing by default
+        self._show_filing(self._filing_paths[0])
+
+    def _show_filing(self, path: Path) -> None:
+        try:
+            text = path.read_text(encoding="utf-8")[:3000]
+        except Exception as e:
+            text = f"Could not read file: {e}"
+        self.query_one("#qt-filing-text-content", Static).update(text)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id == "qt-filings-table":
+            paths = getattr(self, "_filing_paths", [])
+            idx   = list(event.data_table.rows.keys()).index(event.row_key)
+            if 0 <= idx < len(paths):
+                self._show_filing(paths[idx])
 
 
 # ── Login screen ───────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ CLI:
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from turboquant_model import TurboQuantConfig, load_quantized, quantize_model, save_quantized
 
+import db
 import screener_config as cfg
 
 # ---------------------------------------------------------------------------
@@ -370,6 +372,56 @@ def run_tests(model, tokenizer) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Job queue worker
+# ---------------------------------------------------------------------------
+
+def _dispatch_job(job: dict, model, tokenizer) -> dict:
+    """Route a job to the correct LLM function by job_type."""
+    payload = json.loads(job["input_json"])
+    match job["job_type"]:
+        case "classify_news":
+            result = classify_news(model, tokenizer, **payload)
+        case "extract_10k":
+            result = extract_10k_entities(model, tokenizer, **payload)
+        case "parse_8k":
+            result = parse_8k_event(model, tokenizer, **payload)
+        case _:
+            raise ValueError(f"Unknown job_type: {job['job_type']!r}")
+    return result or {}
+
+
+def run_worker(once: bool = False) -> None:
+    """Poll llm_jobs table and process one job at a time. Load model once, loop until empty."""
+    db.init_db()
+    stats = db.get_llm_queue_stats()
+    pending = stats.get("pending", 0)
+    print(f"[worker] Queue: {stats}  — loading model...")
+    model, tokenizer = load_model()
+    print("[worker] Model loaded. Starting queue drain.")
+
+    while True:
+        job = db.dequeue_next_llm_job()
+        if not job:
+            if once:
+                print("[worker] Queue empty — exiting (--worker-once).")
+                break
+            time.sleep(10)
+            continue
+
+        print(f"[worker] job_uid={job['job_uid']} type={job['job_type']} ref={job['source_ref']}")
+        try:
+            result  = _dispatch_job(job, model, tokenizer)
+            db.complete_llm_job(job["job_uid"], json.dumps(result))
+            print(f"[worker] DONE  job_uid={job['job_uid']}")
+        except Exception as exc:
+            db.fail_llm_job(job["job_uid"], str(exc))
+            print(f"[worker] FAIL  job_uid={job['job_uid']}: {exc}")
+
+        if once:
+            break
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -378,6 +430,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--quantize",      action="store_true", help="Download + quantize model (run once)")
     p.add_argument("--test",          action="store_true", help="Run validation test suite")
     p.add_argument("--classify-news", metavar="HEADLINE",  help="Classify a news headline")
+    p.add_argument("--worker",        action="store_true", help="Start queue worker (loops until empty or Ctrl-C)")
+    p.add_argument("--worker-once",   action="store_true", help="Process one pending job then exit")
     return p.parse_args()
 
 
@@ -386,6 +440,10 @@ def main() -> None:
 
     if args.quantize:
         quantize_and_save()
+        return
+
+    if args.worker or args.worker_once:
+        run_worker(once=args.worker_once)
         return
 
     model, tokenizer = load_model()
@@ -399,7 +457,7 @@ def main() -> None:
         print(json.dumps(result, indent=2) if result else "Could not parse output")
         return
 
-    print("No action specified. Use --quantize, --test, or --classify-news.")
+    print("No action specified. Use --quantize, --test, --classify-news, --worker, or --worker-once.")
 
 
 if __name__ == "__main__":

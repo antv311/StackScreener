@@ -117,6 +117,7 @@ EDGAR_STALENESS_DAYS:    int   = 90    # re-fetch XBRL facts quarterly
 EDGAR_FILING_STALENESS:  int   = 180  # re-fetch 10-K text twice a year
 # Identity string sent to SEC EDGAR in the User-Agent header (required by SEC fair-use policy)
 EDGAR_IDENTITY:          str   = "StackScreener antv311@gmail.com"
+FILINGS_CACHE_DIR:       str   = "src/filings"  # 10-K → src/filings/10k/  8-K → src/filings/8k/
 
 FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
 FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"

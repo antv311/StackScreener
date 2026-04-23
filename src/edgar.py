@@ -30,6 +30,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 
 import requests
 
@@ -44,11 +45,31 @@ from screener_config import (
     EVENT_TYPE_INFRASTRUCTURE, EVENT_TYPE_PRODUCT_RECALL, EVENT_TYPE_CYBER,
     EVENT_STATUS_MONITORING, SEVERITY_MEDIUM, SEVERITY_HIGH, CONFIDENCE_MEDIUM,
     ROLE_IMPACTED, SIGNAL_MATERIAL_EVENT, MATERIAL_EVENT_SCORE, PROVIDER_SEC_EDGAR,
+    FILINGS_CACHE_DIR,
 )
 
 _EDGAR_HEADERS   = {"User-Agent": "StackScreener antv311@gmail.com"}
 
 _CIK_MAP_URL     = "https://www.sec.gov/files/company_tickers.json"
+
+
+# ── Filing cache helpers ───────────────────────────────────────────────────────
+
+def _cache_path(subdir: str, ticker: str, cik: str, accession: str) -> Path:
+    p = Path(FILINGS_CACHE_DIR) / subdir / f"{ticker}_{cik}_{accession}.txt"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _read_cached_filing(subdir: str, ticker: str, cik: str, accession: str) -> str | None:
+    p = Path(FILINGS_CACHE_DIR) / subdir / f"{ticker}_{cik}_{accession}.txt"
+    if p.exists():
+        return p.read_text(encoding="utf-8")
+    return None
+
+
+def _write_cached_filing(subdir: str, ticker: str, cik: str, accession: str, text: str) -> None:
+    _cache_path(subdir, ticker, cik, accession).write_text(text, encoding="utf-8")
 _FACTS_URL       = "https://data.sec.gov/api/xbrl/companyfacts/{cik}.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 _ARCHIVES_URL    = "https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn}/{doc}"
@@ -405,10 +426,20 @@ def fetch_filing_text(limit: int | None = None) -> None:
                         print(f"[edgar] {ticker}: no 10-K found")
                     continue
 
-                tenk        = filings.obj()
-                biz_text    = str(tenk.business    or "")
-                risk_text   = str(tenk.risk_factors or "")
-                full_text   = biz_text + "\n" + risk_text
+                accession   = str(filings.accession_number or "unknown").replace("/", "-")
+                cik_str     = str(stock.get("cik") or "unknown")
+                cached      = _read_cached_filing("10k", ticker, cik_str, accession)
+
+                if cached:
+                    full_text = cached
+                    tenk      = filings.obj()
+                else:
+                    tenk      = filings.obj()
+                    biz_text  = str(tenk.business    or "")
+                    risk_text = str(tenk.risk_factors or "")
+                    full_text = biz_text + "\n" + risk_text
+                    _write_cached_filing("10k", ticker, cik_str, accession, full_text)
+
                 fiscal_year = (tenk.period_of_report or "")[:4] or str(datetime.now().year)
 
                 risk_flags = _extract_risk_flags(full_text)
@@ -535,8 +566,14 @@ def _detect_8k_event(text: str) -> dict | None:
     }
 
 
-def _fetch_8k_filing_text(cik: str, accession: str, primary_doc: str) -> str | None:
-    """Fetch the text of a single 8-K primary document from EDGAR archives."""
+def _fetch_8k_filing_text(
+    cik: str, accession: str, primary_doc: str, ticker: str = ""
+) -> str | None:
+    """Fetch the text of a single 8-K primary document, using local cache when available."""
+    cached = _read_cached_filing("8k", ticker, cik, accession)
+    if cached:
+        return cached
+
     cik_int = str(int(cik))  # strip leading zeros for archives path
     accn    = accession.replace("-", "")
     url     = _ARCHIVES_URL.format(cik_int=cik_int, accn=accn, doc=primary_doc)
@@ -545,10 +582,10 @@ def _fetch_8k_filing_text(cik: str, accession: str, primary_doc: str) -> str | N
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
-        ct = resp.headers.get("content-type", "")
-        if "html" in ct or primary_doc.endswith((".htm", ".html")):
-            return _strip_html(resp.text)
-        return resp.text
+        ct   = resp.headers.get("content-type", "")
+        text = _strip_html(resp.text) if ("html" in ct or primary_doc.endswith((".htm", ".html"))) else resp.text
+        _write_cached_filing("8k", ticker, cik, accession, text)
+        return text
     except Exception as e:
         if DEBUG_MODE:
             print(f"[edgar:8K] fetch failed {url}: {e}")
@@ -640,7 +677,7 @@ def fetch_8k_filings(limit: int | None = None) -> None:
 
         events_found: list[dict] = []
         for filing in filings:
-            text = _fetch_8k_filing_text(stock["cik"], filing["accession"], filing["primary_doc"])
+            text = _fetch_8k_filing_text(stock["cik"], filing["accession"], filing["primary_doc"], ticker=stock["ticker"])
             time.sleep(EDGAR_RATE_LIMIT)
             if not text:
                 continue
@@ -701,6 +738,12 @@ def fetch_8k_filings(limit: int | None = None) -> None:
                     role=ROLE_IMPACTED,
                     impact_notes=reason[:200],
                     confidence=CONFIDENCE_MEDIUM,
+                )
+                # Enqueue deep LLM parse — worker picks this up when GPU is free
+                db.enqueue_llm_job(
+                    "parse_8k",
+                    json.dumps({"filing_text": text[:8000], "ticker": stock["ticker"]}),
+                    source_ref=f"cik:{stock['cik']}",
                 )
 
         # Write the check record regardless of whether events were found

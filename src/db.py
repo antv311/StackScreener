@@ -409,6 +409,21 @@ def init_db() -> None:
                 fetched_at   TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(source, url)
             );
+
+            CREATE TABLE IF NOT EXISTS llm_jobs (
+                job_uid      INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_type     TEXT NOT NULL,   -- 'classify_news' | 'extract_10k' | 'parse_8k'
+                input_json   TEXT NOT NULL,   -- JSON payload for the job
+                status       TEXT NOT NULL DEFAULT 'pending',  -- pending|running|done|failed
+                result_json  TEXT,            -- JSON output on success
+                error_text   TEXT,            -- error message on failure
+                retries      INTEGER NOT NULL DEFAULT 0,
+                priority     INTEGER NOT NULL DEFAULT 5,  -- 1=high … 9=low
+                source_ref   TEXT,            -- e.g. 'article_uid:42' or 'cik:0001234'
+                created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                started_at   TEXT,
+                completed_at TEXT
+            );
         """)
         _migrate_db(conn)
         _debug("init_db complete")
@@ -432,6 +447,8 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN ev_ebitda REAL",
         "ALTER TABLE stocks ADD COLUMN company_name TEXT",
         "ALTER TABLE news_articles ADD COLUMN llm_classified INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE source_signals ADD COLUMN signal_url TEXT",
+        "ALTER TABLE source_signals ADD COLUMN notes TEXT",
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched   ON stocks (delisted, last_enriched_at)",
@@ -442,6 +459,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_sce_status                  ON supply_chain_events (status)",
         "CREATE INDEX IF NOT EXISTS idx_scan_results_scan_rank      ON scan_results (scan_uid, composite_rank)",
         "CREATE INDEX IF NOT EXISTS idx_news_articles_source_pub    ON news_articles (source, published_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_llm_jobs_status_priority    ON llm_jobs (status, priority, created_at)",
     ]
     for sql in migrations:
         try:
@@ -1233,6 +1251,97 @@ def mark_article_classified(article_uid: int) -> None:
         "UPDATE news_articles SET llm_classified = 1 WHERE article_uid = ?",
         (article_uid,),
     )
+
+
+# ── LLM Job Queue ──────────────────────────────────────────────────────────────
+
+def enqueue_llm_job(
+    job_type: str,
+    input_json: str,
+    source_ref: str | None = None,
+    priority: int = 5,
+) -> int:
+    return execute(
+        "INSERT INTO llm_jobs (job_type, input_json, source_ref, priority) VALUES (?, ?, ?, ?)",
+        (job_type, input_json, source_ref, priority),
+    )
+
+
+def dequeue_next_llm_job() -> dict | None:
+    with _connect() as conn:
+        conn.execute("""
+            UPDATE llm_jobs
+            SET status = 'running', started_at = datetime('now')
+            WHERE job_uid = (
+                SELECT job_uid FROM llm_jobs
+                WHERE status = 'pending'
+                ORDER BY priority ASC, created_at ASC
+                LIMIT 1
+            )
+        """)
+        conn.commit()
+        return conn.execute(
+            "SELECT * FROM llm_jobs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+
+
+def complete_llm_job(job_uid: int, result_json: str) -> None:
+    execute(
+        "UPDATE llm_jobs SET status = 'done', result_json = ?, completed_at = datetime('now') WHERE job_uid = ?",
+        (result_json, job_uid),
+    )
+
+
+def fail_llm_job(job_uid: int, error_text: str, max_retries: int = 3) -> None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT retries FROM llm_jobs WHERE job_uid = ?", (job_uid,)
+        ).fetchone()
+        if not row:
+            return
+        new_retries = row["retries"] + 1
+        new_status  = "failed" if new_retries >= max_retries else "pending"
+        conn.execute(
+            "UPDATE llm_jobs SET status = ?, retries = ?, error_text = ? WHERE job_uid = ?",
+            (new_status, new_retries, error_text, job_uid),
+        )
+        conn.commit()
+
+
+def get_llm_queue_stats() -> dict:
+    rows = query("SELECT status, COUNT(*) AS cnt FROM llm_jobs GROUP BY status")
+    return {r["status"]: r["cnt"] for r in rows}
+
+
+def get_llm_jobs(status: str | None = None, limit: int = 50) -> list[dict]:
+    if status is not None:
+        return query(
+            "SELECT * FROM llm_jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+            (status, limit),
+        )
+    return query("SELECT * FROM llm_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+
+
+# ── DB Browser (db_app.py) ─────────────────────────────────────────────────────
+
+def get_table_names() -> list[str]:
+    rows = query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+    )
+    return [r["name"] for r in rows]
+
+
+def browse_table(table: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    allowed = {r["name"] for r in query("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if table not in allowed:
+        raise ValueError(f"Unknown table: {table!r}")
+    return query(f"SELECT * FROM {table} LIMIT ? OFFSET ?", (limit, offset))
+
+
+def execute_raw_sql(sql: str, params: tuple = ()) -> list[dict]:
+    if not sql.strip().upper().startswith("SELECT"):
+        raise ValueError("Only SELECT statements are permitted.")
+    return query(sql, params)
 
 
 def get_all_tickers() -> frozenset[str]:
