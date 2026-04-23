@@ -71,16 +71,17 @@ and enrichment. Operators run this to keep the database current and add new sour
 |---|---|
 | `enricher.py` — fundamentals + IPO calendar + price history | ✅ Complete |
 | `edgar.py` — CIK seed + XBRL geographic revenue + 10-K text flags | ✅ Complete |
-| `news.py` — WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo Finance | ✅ Complete |
-| `supply_chain.py` — 6 curated events, 37 company links, Tier 1 matching | ✅ Complete |
-| `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Built (Phase 3 wiring) |
+| `edgar.py --fetch-8k` — 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
+| `news.py` — WSJ/MS/MF podcasts (Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT | ✅ Complete |
+| `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
+| `supply_chain.py` — 9 curated events, 51 company links, Tier 1 matching | ✅ Complete |
+| `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Complete |
 | `inst_flow.py --form4` — SEC EDGAR Form 4 insider buy/sell trades | ✅ Complete |
 | `inst_flow.py --form13f` — SEC EDGAR Form 13F institutional holdings (14 institutions) | ✅ Complete |
-| `inst_flow.py --options` — yfinance unusual call/put volume detection | ✅ Complete |
+| `inst_flow.py --options` — yfinance unusual call/put volume (>3× OI) | ✅ Complete |
 | `llm.py` — 3 tasks validated 3/3 on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
-| `edgar.py --fetch-8k` — 8-K material event scanner (fire/flood/recall/cyber) | ✅ Complete |
-| `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
-| Tier 2 seeds expanded (9 events: +consumer staples + labor strike + industrial REIT) | ✅ Complete |
+| `commodities.py` — USDA crop conditions + EIA petroleum inventory signals | ✅ Complete |
+| `logistics.py` — AIS chokepoints (10 routes) + Panama Canal draft restriction | ✅ Complete |
 | `scraper_app.py` — Data Scraper TUI | 🔲 Planned |
 
 ---
@@ -116,8 +117,8 @@ and enrichment. Operators run this to keep the database current and add new sour
 - [x] Validation test suite (`--test`) with ground-truth pass/fail for all three tasks
 - [x] Download + quantize Qwen2.5-7B-Instruct (`python src/llm.py --quantize`) — 4.6 GB
 - [x] Run `--test` — all three tasks pass (1066s / 1756s / 3146s; PyTorch fallback on 8GB)
-- [ ] Wire news classifier into `supply_chain_events` auto-creation (post-ingest hook)
-- [ ] Wire 8-K parser into `edgar.py --fetch-8k` pipeline
+- [x] Wire news classifier into `supply_chain_events` auto-creation (`news.py --classify`)
+- [x] Wire 8-K parser into `edgar.py --fetch-8k` pipeline
 
 ### News Aggregation
 
@@ -143,41 +144,6 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 ## P1 — Next Up
 
-### SEC EDGAR Form 4 — Insider Trades ✅ Complete
-
-- [x] `inst_flow.py --form4` — EDGAR EFTS search → XML parse → source_signals
-- [x] Parse: insider name/title, transaction type (A=buy/D=sell), shares, price, date
-- [x] Dedup by signal_url — safe to re-run
-- [x] Auto-wired into composite score via `source_signals.sub_score` aggregation
-
-### SEC EDGAR Form 13F — Institutional Holdings ✅ Complete
-
-- [x] `inst_flow.py --form13f` — fetch latest 13F-HR for 14 configured institutions
-- [x] Parse infotable XML: nameOfIssuer, CUSIP, value, shares
-- [x] Fuzzy name-match to stocks table via normalised company_name
-- [x] Compare vs prior stored holdings → new/increased = inst_buy, decreased/exited = inst_sell
-- [x] Dedup by signal_url — safe to re-run
-
-### yfinance Options Flow ✅ Complete
-
-- [x] `inst_flow.py --options` — nearest-expiration options chain via yfinance
-- [x] Flag: volume > 3× open interest AND >= 500 contracts
-- [x] Call unusual → `unusual_options` signal (score 65); put unusual → (score 30)
-- [x] Dedup by signal_url — safe to re-run
-- [x] `--tickers` flag for targeted scanning; `--limit N` for universe cap
-
-### SEC EDGAR Form 13F — Institutional Holdings
-
-- [ ] `inst_flow.py --form13f` — fetch quarterly 13F filings for top institutions
-- [ ] Track position changes (new position, increased, decreased, exited)
-- [ ] Store in `source_signals` with `signal_type = 'inst_holding_change'`
-
-### yfinance Options Flow
-
-- [ ] `inst_flow.py --options` — pull options chain via `yf.Ticker().options`
-- [ ] Flag unusual call/put volume (>2x 30-day average)
-- [ ] Store in `source_signals` with `signal_type = 'unusual_options'`
-
 ### Data Scraper TUI (`scraper_app.py`)
 
 - [ ] Live log tail — enricher, EDGAR, news, inst_flow output streamed in real time
@@ -194,10 +160,9 @@ debug bad data entirely from the TUI without touching the CLI.
 
 ## P1 — Backlog / Enhancements
 
-- **Three-stream coverage gaps** — upstream (USDA crop/EIA energy/mining), midstream (AIS
-  chokepoints/Panama Canal/port congestion), downstream (REIT entity resolution via 10-K LLM)
-  — 8-K pipeline, Gap 1 (LLM classifier), Gap 2 (event types), Gap 4 (consumer staples seeds),
-  Gap 5 (8-K) all closed — see `todonext.md` for remaining items
+- **Three-stream coverage gaps** — upstream ✅ (USDA/EIA built), midstream ✅ (AIS/Panama built),
+  downstream: REIT entity resolution via 10-K LLM extractor still pending
+  — all 5 warehouse-fire smoke-test gaps closed; mining/port-congestion data still open
 - Automated supply chain event ingestion (worldmonitor-osint or news scraping)
 - Automated refresh on app startup or scheduled trigger
 - Earnings call transcript ingestion (via SEC EDGAR or podcast feeds)
@@ -305,8 +270,8 @@ chain events, and manage watchlists from a polished terminal interface.
 | Research — Research Reports tab | ✅ Complete |
 | Research — News tab | ✅ Complete |
 | Stock Quote Modal (Enter on any row) | ✅ Complete |
-| Home — Market heatmap | 🔲 Next (Phase 1b) |
-| Logistics — Interactive world map | 🔲 Planned (Phase 1d) |
+| Home — Market heatmap (8-col tile grid, filter buttons, click → StockQuoteModal) | ✅ Complete |
+| Logistics — ASCII world map with coloured event markers | ✅ Complete |
 | Watchlist management | 🔲 Planned (Phase 1e) |
 | Scan results history + diff | 🔲 Planned (Phase 1f) |
 
@@ -324,33 +289,21 @@ chain events, and manage watchlists from a polished terminal interface.
 - [x] Stock Quote Modal — 4 tabs: Overview (40+ fields), Signals, History, News
   - Trigger: Enter on Screener row; "Open Quote →" button in Stock Picks cards
   - All data from DB, no network calls on open
+- [x] Home heatmap — `HeatmapTile` 8-col CSS grid, bg color by `change_pct`, filter buttons, click → modal
+- [x] Logistics world map — `WorldMap(Static)`, 74×18 ASCII equirectangular, coloured markers + legend
 
 ---
 
 ## P3 — Next Up
 
-### Phase 1b — Home Screen
-
-- [ ] Full-width market heatmap — tiles color-coded by % change, sized by market cap
-- [ ] Click tile → open Stock Quote Modal for that ticker
-- [ ] Index selector: S&P 500 / DOW / Russell 1000 / Watchlist / All
-- [ ] Summary row: gainers count, losers count, flat count, avg score
-
-### Phase 1d — Logistics Screen (world map)
-
-- [ ] ASCII/Unicode world map with region markers for active SC events
-- [ ] Marker color = severity (red=CRITICAL, orange=HIGH, yellow=MEDIUM, blue=LOW)
-- [ ] Click/select region → filter the company table below
-- [ ] Table: Region/Event | Impacted Companies | Cannot Provide | Will Redirect To | Severity
-
-### Phase 1e — Watchlist Management
+### Watchlist Management
 
 - [ ] Add / remove symbols from watchlist via the TUI (no CLI needed)
 - [ ] Watchlist tab showing latest scores, prices, and signals
 - [ ] Import watchlist from CSV drag-and-drop or file path input
 - [ ] Watchlist scoped to logged-in user via `user_uid`
 
-### Phase 1f — Results & History
+### Results & History
 
 - [ ] Browse all past scan runs — filter by mode, date, score count
 - [ ] Side-by-side diff: two scan runs, highlight movers (rank up/down > 10)

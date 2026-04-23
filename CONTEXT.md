@@ -37,9 +37,11 @@ The app has three top-level sections in a left sidebar: **Home**, **Research**, 
 See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 `Mock_up/Prototype/stackscreener_full_ui_prototype.html`.
 
-### Home
-- Full-width market heatmap (tiles color-coded by % change, sized by market cap)
-- Index selector at bottom: S&P 500 / DOW / Russell 1000 / Recommended / All
+### Home ✅ Built
+- Stats bar: active stock count, enriched count, SC event count, last scan summary
+- Filter buttons: All / Large Cap ($10B+) / Mega Cap ($200B+) / S&P ≈500 (top 500 by mcap) / Watchlist
+- 8-column CSS grid of `HeatmapTile` widgets — background color from dark green → dark red by `change_pct`
+- Each tile: ticker + % change + market cap; click/Enter → `StockQuoteModal`
 
 ### Research (6 sub-tabs across the top bar)
 
@@ -75,11 +77,12 @@ Press ESC or Q to close. All data from DB — no network calls on open.
 - **History** — last 365 days of OHLCV from `price_history`, dividend column
 - **News** — recent `news_articles` for this stock
 
-### Logistics
-- World map with animated pulsing pins for active supply chain disruptions.
-  Pin color = severity (red=CRITICAL, orange=HIGH, yellow=MEDIUM, blue=LOW).
-- Clicking a pin filters the table below to that event.
-- Table columns: Region/Event | Impacted Companies | Cannot Provide | Will Redirect To | Severity
+### Logistics ✅ Built
+- `WorldMap(Static)` widget: 74×18 equirectangular ASCII map, landmass in dim green `~`,
+  coloured `●` markers at lat/lon for each active supply chain event, severity legend below
+- Left sidebar: scrollable `EventListItem` list (severity badge + region + title); click to select
+- Right panel: world map → event detail (title, region, type, severity, affected sectors) → company DataTable
+- Company table columns: Role | Ticker | Sector | Cannot Provide | Will Redirect To | Confidence
 
 ---
 
@@ -119,23 +122,25 @@ See `ROADMAP.md` for full per-project status and backlogs.
 └──────────────────────┘     └──────────────────────────┘
 ```
 
-**Data sources (all free — no paid API keys required):**
+**Data sources (all free — no paid API keys required unless noted):**
 ```
 yfinance / yahooquery         → price, fundamentals, IPO calendar, options chain
 Senate + House Stock Watcher  → congressional trades (inst_flow.py — built)
 SEC EDGAR XBRL                → geographic revenue, customer concentration (edgar.py — built)
 SEC EDGAR 10-K text           → risk flags, customer % mentions (edgar.py — built)
-SEC EDGAR Form 4              → insider buy/sell filings [P1 next]
-SEC EDGAR Form 13F            → institutional holdings [P1 planned]
-SEC EDGAR 8-K                 → material events (fires, facility losses) [P1 planned]
+SEC EDGAR Form 4              → insider buy/sell filings (inst_flow.py — built)
+SEC EDGAR Form 13F            → institutional holdings, 14 institutions (inst_flow.py — built)
+SEC EDGAR 8-K                 → material events: fire/flood/recall/cyber (edgar.py — built)
+yfinance options chain        → unusual call/put volume >3× OI (inst_flow.py — built)
 WSJ/MS/MF podcasts (Whisper)  → transcript news signals (news.py — built)
 WSJ PDF + Yahoo Finance news  → article signals (news.py — built)
 AP News / CNBC / MarketWatch  → RSS article feeds (news.py — built)
 NewsAPI.org (AP+Reuters+150k) → REST API, free tier (news.py — built; requires key)
 GDELT Project                 → global event database, free (news.py — built)
-worldmonitor-osint            → supply chain events [P1 planned]
-AIS maritime chokepoints      → vessel traffic at Hormuz/Malacca/Suez/etc [P1 planned]
-Panama Canal Authority        → daily draft restrictions [P1 planned]
+USDA NASS crop conditions     → weekly G+E% per crop → crop_stress signals (commodities.py; requires free key)
+EIA petroleum inventory       → weekly crude/gasoline surprise (commodities.py; requires free key)
+AIS maritime chokepoints      → aisstream.io WebSocket, 10 chokepoints (logistics.py; requires free key)
+Panama Canal Authority        → ACP draft restrictions scrape (logistics.py; public)
 Qwen2.5-7B validated 3/3 / 32B (prod) + TurboQuant 4-bit → LLM extraction (llm.py — built)
 ```
 
@@ -167,16 +172,18 @@ StackScreener/
 │   ├── screener_run.py             ← scan runner / CLI (nsr/thematic/watchlist + CSV)
 │   ├── — P1: DATA SCRAPER —
 │   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
-│   ├── supply_chain.py             ← Tier 2 curated seed (6 events, 37 links) + Tier 1 sector matching
-│   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + customer %
-│   ├── inst_flow.py                ← congressional trades (Senate + House) + Form 4/13F [PARTIAL — P1 next]
-│   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo Finance news
+│   ├── supply_chain.py             ← Tier 2 curated seed (9 events, 51 links) + Tier 1 sector matching
+│   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + 8-K material events
+│   ├── inst_flow.py                ← congressional trades + Form 4 insider trades + Form 13F + options flow
+│   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
+│   ├── commodities.py              ← USDA crop conditions + EIA petroleum → upstream commodity signals
+│   ├── logistics.py                ← AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals
 │   ├── scraper_app.py              ← Data Scraper TUI entry point                        [PLANNED — P1]
 │   ├── — P2: DATABASE & SERVER —
 │   ├── db_app.py                   ← Database & Server TUI entry point                   [PLANNED — P2]
 │   ├── — P3: BLOOMBERG TUI —
-│   ├── app.py                      ← Bloomberg TUI — login, sidebar, Research tabs, StockQuoteModal
+│   ├── app.py                      ← Bloomberg TUI — login, sidebar, Research tabs, Home heatmap, Logistics world map
 │   ├── pdf_generator.py            ← PDF reports (fpdf2)                                 [PLANNED — P3]
 │   ├── mailer.py                   ← email delivery                                      [PLANNED — P4]
 │   └── Results/                    ← scan output (gitignored)
@@ -301,4 +308,7 @@ Default admin account: `admin / admin` — forced to change on first login.
 - House Stock Watcher API: https://housestockwatcher.com/api (free, no key)
 - SEC EDGAR full-text search: https://efts.sec.gov/LATEST/search-index (free)
 - SEC EDGAR filings API: https://data.sec.gov/submissions/ (free)
-- Supply chain signals: https://github.com/worldmonitor/worldmonitor-osint (planned)
+- USDA NASS Quick Stats API: https://quickstats.nass.usda.gov/api (free key)
+- EIA Open Data API: https://www.eia.gov/opendata/ (free key)
+- aisstream.io WebSocket API: https://aisstream.io (free key — requires signup)
+- Panama Canal Authority restrictions: https://www.pancanal.com/eng/op/aqRestricciones.html (public)
