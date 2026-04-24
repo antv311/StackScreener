@@ -449,6 +449,15 @@ def init_db() -> None:
                 started_at   TEXT,
                 completed_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS scheduled_jobs (
+                schedule_uid    INTEGER PRIMARY KEY AUTOINCREMENT,
+                label           TEXT NOT NULL,          -- human label matching _COMMANDS
+                command_key     TEXT NOT NULL,          -- argv[1] fragment used as stable key
+                interval_hours  REAL NOT NULL DEFAULT 24,
+                enabled         INTEGER NOT NULL DEFAULT 1,
+                last_run_at     TEXT,                   -- ISO datetime of last execution
+                created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
         _migrate_db(conn)
         _debug("init_db complete")
@@ -497,6 +506,7 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_scan_results_scan_rank      ON scan_results (scan_uid, composite_rank)",
         "CREATE INDEX IF NOT EXISTS idx_news_articles_source_pub    ON news_articles (source, published_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_llm_jobs_status_priority    ON llm_jobs (status, priority, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled       ON scheduled_jobs (enabled, last_run_at)",
     ]
     for sql in migrations:
         try:
@@ -1656,3 +1666,34 @@ def get_enriched_stock_count() -> int:
         "SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0 AND last_enriched_at IS NOT NULL"
     )
     return row["n"] if row else 0
+
+
+# ── Scheduled jobs ─────────────────────────────────────────────────────────────
+
+def get_scheduled_jobs() -> list[dict]:
+    return query("SELECT * FROM scheduled_jobs ORDER BY schedule_uid ASC")
+
+
+def upsert_scheduled_job(label: str, command_key: str, interval_hours: float) -> int:
+    return execute(
+        "INSERT INTO scheduled_jobs (label, command_key, interval_hours) VALUES (?, ?, ?)",
+        (label, command_key, interval_hours),
+    )
+
+
+def toggle_scheduled_job(schedule_uid: int, enabled: bool) -> None:
+    execute(
+        "UPDATE scheduled_jobs SET enabled = ? WHERE schedule_uid = ?",
+        (1 if enabled else 0, schedule_uid),
+    )
+
+
+def delete_scheduled_job(schedule_uid: int) -> None:
+    execute("DELETE FROM scheduled_jobs WHERE schedule_uid = ?", (schedule_uid,))
+
+
+def update_scheduled_job_last_run(schedule_uid: int) -> None:
+    execute(
+        "UPDATE scheduled_jobs SET last_run_at = datetime('now') WHERE schedule_uid = ?",
+        (schedule_uid,),
+    )

@@ -82,7 +82,61 @@ _COMMANDS: list[tuple[str, str, list[str]]] = [
     ("AIS Chokepoints",       "logistics.py --choke",      [sys.executable, f"{_SRC}/logistics.py", "--chokepoints"]),
     ("Panama Canal",          "logistics.py --panama",     [sys.executable, f"{_SRC}/logistics.py", "--panama"]),
     ("Supply Chain Seed",     "supply_chain.py --seed",    [sys.executable, f"{_SRC}/supply_chain.py", "--seed-tier2"]),
+    ("WSJ Newspaper",         "wsj_fetcher.py",            [sys.executable, f"{_SRC}/wsj_fetcher.py"]),
 ]
+
+# Lookup map: command_key → argv (for scheduler firing)
+_COMMAND_MAP: dict[str, list[str]] = {cmd_key: argv for _lbl, cmd_key, argv in _COMMANDS}
+
+
+# ── Schedule Modal ─────────────────────────────────────────────────────────────
+
+class ScheduleModal(ModalScreen):
+    """Add a new scheduled job: pick command + interval in hours."""
+
+    DEFAULT_CSS = """
+    ScheduleModal > Vertical {
+        width: 60;
+        height: auto;
+        background: $surface;
+        border: tall $primary;
+        padding: 1 2;
+    }
+    ScheduleModal .modal-label { margin-top: 1; }
+    ScheduleModal #sched-save  { margin-top: 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("[bold]Add Scheduled Job[/]", id="sched-title")
+            yield Static("Command", classes="modal-label")
+            yield Select(
+                [(lbl, cmd_key) for lbl, cmd_key, _ in _COMMANDS],
+                id="sched-cmd-select",
+                allow_blank=False,
+            )
+            yield Static("Interval (hours)", classes="modal-label")
+            yield Input("24", id="sched-interval", restrict=r"[\d.]+")
+            with Horizontal():
+                yield Button("Save",   id="sched-save",   variant="primary")
+                yield Button("Cancel", id="sched-cancel", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "sched-cancel":
+            self.dismiss(None)
+            return
+        if event.button.id == "sched-save":
+            cmd_select = self.query_one("#sched-cmd-select", Select)
+            interval_input = self.query_one("#sched-interval", Input)
+            cmd_key = cmd_select.value
+            if cmd_key is Select.BLANK:
+                return
+            try:
+                hours = float(interval_input.value or "24")
+            except ValueError:
+                hours = 24.0
+            label = next((lbl for lbl, ck, _ in _COMMANDS if ck == cmd_key), str(cmd_key))
+            self.dismiss({"label": label, "command_key": str(cmd_key), "interval_hours": hours})
 
 
 # ── Unified Endpoint Modal ─────────────────────────────────────────────────────
@@ -472,6 +526,13 @@ class ScraperApp(App):
                                     yield Button("Add", id="add-keyword-btn", variant="success")
                                     yield Button("Delete Selected", id="del-keyword-btn", variant="error")
                                 yield DataTable(id="keywords-table")
+                    with TabPane("Schedule", id="tab-schedule"):
+                        with Horizontal(id="schedule-btn-row"):
+                            yield Button("+ Add Schedule", id="add-schedule-btn", variant="primary")
+                            yield Button("Toggle Enable", id="toggle-schedule-btn", variant="warning")
+                            yield Button("Delete",        id="del-schedule-btn",   variant="error")
+                        yield Static("", id="schedule-next-label")
+                        yield DataTable(id="schedule-table")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -479,11 +540,14 @@ class ScraperApp(App):
         self._setup_queue_table()
         self._setup_sources_table()
         self._setup_news_tables()
+        self._setup_schedule_table()
         self._refresh_queue()
         self._refresh_sources()
         self._refresh_news_sources()
         self._refresh_keywords()
+        self._refresh_schedules()
         self.set_interval(15, self._refresh_queue)
+        self.set_interval(60, self._check_schedules)
         self._log(f"[bold green]StackScreener Data Scraper ready.[/] {len(_COMMANDS)} commands available.")
 
     # ── helpers ────────────────────────────────────────────────────────────────
@@ -632,10 +696,81 @@ class ScraperApp(App):
             check = "[green]✓[/]" if kw["enabled"] else " "
             tbl.add_row(check, kw["keyword"], key=str(kw["keyword_uid"]))
 
+    # ── scheduler ─────────────────────────────────────────────────────────────
+
+    def _setup_schedule_table(self) -> None:
+        tbl = self.query_one("#schedule-table", DataTable)
+        tbl.add_columns("En", "Command", "Every (h)", "Last Run")
+
+    def _refresh_schedules(self) -> None:
+        tbl = self.query_one("#schedule-table", DataTable)
+        tbl.clear()
+        for row in db.get_scheduled_jobs():
+            check   = "[green]✓[/]" if row["enabled"] else " "
+            last    = row["last_run_at"] or "never"
+            tbl.add_row(check, row["label"], str(row["interval_hours"]), last, key=str(row["schedule_uid"]))
+
+    def _check_schedules(self) -> None:
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        for row in db.get_scheduled_jobs():
+            if not row["enabled"]:
+                continue
+            if row["last_run_at"]:
+                last = datetime.fromisoformat(row["last_run_at"])
+                if (now - last) < timedelta(hours=row["interval_hours"]):
+                    continue
+            argv = _COMMAND_MAP.get(row["command_key"])
+            if not argv:
+                continue
+            self._log(f"[yellow][Scheduler][/] Firing [bold]{row['label']}[/] (every {row['interval_hours']}h)")
+            db.update_scheduled_job_last_run(row["schedule_uid"])
+            self._run_command(row["label"], argv)
+        self._refresh_schedules()
+
+    def _after_schedule_add(self, result: dict | None) -> None:
+        if result:
+            db.upsert_scheduled_job(result["label"], result["command_key"], result["interval_hours"])
+            self._log(f"[green]Scheduled:[/] {result['label']} every {result['interval_hours']}h")
+            self._refresh_schedules()
+
     # ── button handlers ────────────────────────────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
+
+        if btn_id == "add-schedule-btn":
+            self.push_screen(ScheduleModal(), self._after_schedule_add)
+            return
+
+        if btn_id == "toggle-schedule-btn":
+            tbl = self.query_one("#schedule-table", DataTable)
+            if tbl.cursor_row >= 0:
+                row_key = str(tbl.get_row_at(tbl.cursor_row)[1])  # label col
+                jobs = db.get_scheduled_jobs()
+                match = next((j for j in jobs if j["label"] == row_key), None)
+                if not match:
+                    # fall back to key-based lookup
+                    try:
+                        row_key_val = str(list(tbl.rows.keys())[tbl.cursor_row].value)
+                        match = next((j for j in jobs if str(j["schedule_uid"]) == row_key_val), None)
+                    except Exception:
+                        pass
+                if match:
+                    db.toggle_scheduled_job(match["schedule_uid"], not match["enabled"])
+                    self._refresh_schedules()
+            return
+
+        if btn_id == "del-schedule-btn":
+            tbl = self.query_one("#schedule-table", DataTable)
+            if tbl.cursor_row >= 0:
+                try:
+                    row_key_val = str(list(tbl.rows.keys())[tbl.cursor_row].value)
+                    db.delete_scheduled_job(int(row_key_val))
+                    self._refresh_schedules()
+                except Exception:
+                    pass
+            return
 
         if btn_id == "worker-btn":
             self._toggle_worker()
