@@ -376,30 +376,63 @@ def run_tests(model, tokenizer) -> None:
 # ---------------------------------------------------------------------------
 
 def _dispatch_job(job: dict, model, tokenizer) -> dict:
-    """Route a job to the correct LLM function by job_type."""
+    """Route a job to the correct LLM function by job_type.
+
+    For extract_10k jobs the payload carries a file_path; we read the text from
+    disk and persist the structured result back to edgar_facts automatically.
+    """
     payload = json.loads(job["input_json"])
     match job["job_type"]:
         case "classify_news":
-            result = classify_news(model, tokenizer, **payload)
+            result = classify_news(model, tokenizer, **{
+                k: v for k, v in payload.items() if k in ("headline", "body")
+            })
         case "extract_10k":
-            result = extract_10k_entities(model, tokenizer, **payload)
+            file_path = payload.get("file_path", "")
+            if file_path and Path(file_path).exists():
+                passage = Path(file_path).read_text(encoding="utf-8")[:6000]
+            else:
+                passage = payload.get("passage", "")
+            result = extract_10k_entities(model, tokenizer, passage=passage)
+            # Persist to edgar_facts so the result survives beyond the job queue
+            if result:
+                stock_uid   = payload.get("stock_uid")
+                fiscal_year = str(payload.get("fiscal_year", ""))
+                if stock_uid:
+                    db.upsert_edgar_fact({
+                        "stock_uid":  stock_uid,
+                        "fact_type":  cfg.FACT_LLM_10K_ENTITIES,
+                        "period":     fiscal_year,
+                        "value_json": json.dumps(result),
+                    })
         case "parse_8k":
-            result = parse_8k_event(model, tokenizer, **payload)
+            result = parse_8k_event(model, tokenizer, **{
+                k: v for k, v in payload.items() if k in ("filing_text",)
+            })
         case _:
             raise ValueError(f"Unknown job_type: {job['job_type']!r}")
     return result or {}
 
 
-def run_worker(once: bool = False) -> None:
-    """Poll llm_jobs table and process one job at a time. Load model once, loop until empty."""
+def run_worker(once: bool = False, limit: int | None = None) -> None:
+    """Poll llm_jobs table and process jobs one at a time.
+
+    Loads the model once and loops until:
+    - the queue is empty (--worker-once exits, --worker keeps polling)
+    - or `limit` jobs have been processed (both modes)
+    """
     db.init_db()
     stats = db.get_llm_queue_stats()
-    pending = stats.get("pending", 0)
     print(f"[worker] Queue: {stats}  — loading model...")
     model, tokenizer = load_model()
     print("[worker] Model loaded. Starting queue drain.")
 
+    processed = 0
     while True:
+        if limit is not None and processed >= limit:
+            print(f"[worker] limit={limit} reached — exiting.")
+            break
+
         job = db.dequeue_next_llm_job()
         if not job:
             if once:
@@ -410,13 +443,14 @@ def run_worker(once: bool = False) -> None:
 
         print(f"[worker] job_uid={job['job_uid']} type={job['job_type']} ref={job['source_ref']}")
         try:
-            result  = _dispatch_job(job, model, tokenizer)
+            result = _dispatch_job(job, model, tokenizer)
             db.complete_llm_job(job["job_uid"], json.dumps(result))
             print(f"[worker] DONE  job_uid={job['job_uid']}")
         except Exception as exc:
             db.fail_llm_job(job["job_uid"], str(exc))
             print(f"[worker] FAIL  job_uid={job['job_uid']}: {exc}")
 
+        processed += 1
         if once:
             break
 
@@ -427,11 +461,12 @@ def run_worker(once: bool = False) -> None:
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="StackScreener LLM extraction pipeline")
-    p.add_argument("--quantize",      action="store_true", help="Download + quantize model (run once)")
-    p.add_argument("--test",          action="store_true", help="Run validation test suite")
-    p.add_argument("--classify-news", metavar="HEADLINE",  help="Classify a news headline")
-    p.add_argument("--worker",        action="store_true", help="Start queue worker (loops until empty or Ctrl-C)")
-    p.add_argument("--worker-once",   action="store_true", help="Process one pending job then exit")
+    p.add_argument("--quantize",      action="store_true",       help="Download + quantize model (run once)")
+    p.add_argument("--test",          action="store_true",       help="Run validation test suite")
+    p.add_argument("--classify-news", metavar="HEADLINE",        help="Classify a news headline")
+    p.add_argument("--worker",        action="store_true",       help="Start queue worker (loops until empty or Ctrl-C)")
+    p.add_argument("--worker-once",   action="store_true",       help="Process pending jobs then exit")
+    p.add_argument("--limit",         type=int, default=None,    help="Max jobs to process before exiting (worker modes)")
     return p.parse_args()
 
 
@@ -443,7 +478,7 @@ def main() -> None:
         return
 
     if args.worker or args.worker_once:
-        run_worker(once=args.worker_once)
+        run_worker(once=args.worker_once, limit=args.limit)
         return
 
     model, tokenizer = load_model()

@@ -94,6 +94,13 @@ CONFIDENCE_HIGH:   str = "high"
 CONFIDENCE_MEDIUM: str = "medium"
 CONFIDENCE_LOW:    str = "low"
 
+# Score multiplier applied to supply-chain beneficiary scores by confidence tier.
+SC_CONFIDENCE_MULT: dict[str, float] = {
+    "high":   1.0,
+    "medium": 0.75,
+    "low":    0.50,
+}
+
 # ── Supply Chain Event Severity ────────────────────────────────────────────────
 SEVERITY_CRITICAL: str = "CRITICAL"
 SEVERITY_HIGH:     str = "HIGH"
@@ -117,6 +124,9 @@ EDGAR_STALENESS_DAYS:    int   = 90    # re-fetch XBRL facts quarterly
 EDGAR_FILING_STALENESS:  int   = 180  # re-fetch 10-K text twice a year
 # Identity string sent to SEC EDGAR in the User-Agent header (required by SEC fair-use policy)
 EDGAR_IDENTITY:          str   = "StackScreener antv311@gmail.com"
+# User-Agent strings for commodity and logistics HTTP requests
+COMMODITIES_USER_AGENT:  str   = "StackScreener/1.0 commodities@stackscreener.local"
+LOGISTICS_USER_AGENT:    str   = "StackScreener/1.0 logistics@stackscreener.local"
 FILINGS_CACHE_DIR:       str   = "src/filings"  # 10-K → src/filings/10k/  8-K → src/filings/8k/
 
 FACT_GEOGRAPHIC_REVENUE:     str = "geographic_revenue"
@@ -124,6 +134,7 @@ FACT_CUSTOMER_CONCENTRATION: str = "customer_concentration"
 FACT_RISK_FLAGS:             str = "risk_flags"        # boolean supply-chain risk indicators
 FACT_FILING_CUSTOMERS:       str = "filing_customers"  # customer % mentions from 10-K text
 FACT_8K_EVENTS:              str = "8k_material_events" # keyword-flagged 8-K material events
+FACT_LLM_10K_ENTITIES:       str = "llm_10k_entities"  # LLM-extracted supplier/customer entities
 
 EDGAR_8K_LOOKBACK_DAYS:  int   = 30   # fetch 8-Ks filed in last 30 days
 EDGAR_8K_STALENESS_DAYS: int   = 7    # re-check 8-Ks weekly
@@ -174,10 +185,118 @@ CNBC_RSS_FEEDS: list[tuple[str, str]] = [
 # MarketWatch RSS feed (free, no key)
 MARKETWATCH_RSS_FEED: str = "https://feeds.marketwatch.com/marketwatch/topstories/"
 
-# NewsAPI.org — free tier: 100 req/day. Reuters is fetched via domains="reuters.com".
-NEWSAPI_BASE_URL:   str   = "https://newsapi.org/v2/everything"
-NEWSAPI_PAGE_SIZE:  int   = 20
-NEWSAPI_RATE_LIMIT: float = 1.0   # 1 s between requests (free tier: 100 req/day)
+# NewsAPI.org — free tier: 100 req/day.
+NEWSAPI_BASE_URL:             str        = "https://newsapi.org/v2/everything"
+NEWSAPI_SOURCES_URL:          str        = "https://newsapi.org/v2/sources"
+NEWSAPI_TOP_HEADLINES_URL:    str        = "https://newsapi.org/v2/top-headlines"
+NEWSAPI_PAGE_SIZE:            int        = 20
+NEWSAPI_RATE_LIMIT:           float      = 1.0    # 1 s between requests (free tier: 100 req/day)
+NEWSAPI_MAX_SOURCES_PER_CALL: int        = 20     # API hard limit per request
+# ── Generic news connector templates ─────────────────────────────────────────
+# Each template describes how to call a REST/JSON news API.
+# Stored as connector_config JSON on api_keys rows.
+# Fields:
+#   auth_type    : "query_param" | "bearer" | "header"
+#   auth_param   : param name (query_param) or header name (header)
+#   articles_path: top-level key in the JSON response that holds the articles array
+#   keyword_param: query parameter name for keyword search
+#   page_size_param: query parameter name for page/limit size
+#   default_page_size: default number of articles per request
+#   field_map    : maps our internal field names → vendor field names
+#   extra_params : fixed params always included in every request
+CONNECTOR_TEMPLATES: dict[str, dict] = {
+    "NewsAPI.org": {
+        "auth_type":         "query_param",
+        "auth_param":        "apiKey",
+        "articles_path":     "articles",
+        "keyword_param":     "q",
+        "page_size_param":   "pageSize",
+        "default_page_size": 20,
+        "field_map": {
+            "title":        "title",
+            "url":          "url",
+            "description":  "description",
+            "body":         "content",
+            "published_at": "publishedAt",
+        },
+        "extra_params": {"language": "en", "sortBy": "publishedAt"},
+    },
+    "TheNewsAPI": {
+        "auth_type":         "query_param",
+        "auth_param":        "api_token",
+        "articles_path":     "data",
+        "keyword_param":     "search",
+        "page_size_param":   "limit",
+        "default_page_size": 25,
+        "field_map": {
+            "title":        "title",
+            "url":          "url",
+            "description":  "description",
+            "body":         "snippet",
+            "published_at": "published_at",
+        },
+        "extra_params": {"language": "en"},
+    },
+    "Finnhub": {
+        "auth_type":         "header",
+        "auth_param":        "X-Finnhub-Token",
+        "articles_path":     "",
+        "keyword_param":     "q",
+        "page_size_param":   "",
+        "default_page_size": 50,
+        "field_map": {
+            "title":        "headline",
+            "url":          "url",
+            "description":  "summary",
+            "body":         "summary",
+            "published_at": "datetime",
+        },
+        "extra_params": {},
+    },
+    "Alpha Vantage": {
+        "auth_type":         "query_param",
+        "auth_param":        "apikey",
+        "articles_path":     "feed",
+        "keyword_param":     "tickers",
+        "page_size_param":   "limit",
+        "default_page_size": 50,
+        "field_map": {
+            "title":        "title",
+            "url":          "url",
+            "description":  "summary",
+            "body":         "summary",
+            "published_at": "time_published",
+        },
+        "extra_params": {"sort": "LATEST"},
+    },
+    "Generic (customize)": {
+        "auth_type":         "query_param",
+        "auth_param":        "apiKey",
+        "articles_path":     "articles",
+        "keyword_param":     "q",
+        "page_size_param":   "pageSize",
+        "default_page_size": 20,
+        "field_map": {
+            "title":        "title",
+            "url":          "url",
+            "description":  "description",
+            "body":         "content",
+            "published_at": "publishedAt",
+        },
+        "extra_params": {},
+    },
+}
+
+NEWSAPI_DEFAULT_KEYWORDS: list[str] = [
+    "supply chain disruption",
+    "warehouse fire",
+    "port closure",
+    "factory shutdown",
+    "product recall",
+    "shipping delay",
+    "trade sanctions",
+    "commodity shortage",
+]
 
 # GDELT Project — free, no key; global event database strong on physical disruptions
 GDELT_BASE_URL:   str   = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -204,13 +323,6 @@ PODCAST_FEEDS: list[tuple[str, str]] = [
     (NEWS_SOURCE_MOTLEY_FOOL,    "https://feeds.megaphone.fm/ARML2428817190"),   # Rule Breaker Investing
 ]
 
-# Legacy single-feed constants kept for backwards compat with the Settings panel.
-WSJ_PODCAST_FEEDS: list[str] = [
-    "https://video-api.wsj.com/podcast/rss/wsj/whats-news",
-    "https://video-api.wsj.com/podcast/rss/wsj/minute-briefing",
-]
-MORGAN_STANLEY_PODCAST_FEED: str = "https://rss.art19.com/thoughts-on-the-market"
-MOTLEY_FOOL_PODCAST_FEED:    str = "https://feeds.megaphone.fm/ARML8165884693"
 
 # ── LLM Extraction Pipeline ───────────────────────────────────────────────────
 # Test bed: Qwen2.5-7B-Instruct, TurboQuant 4-bit g=128 Hadamard (~4.4 GB VRAM)
@@ -332,6 +444,21 @@ CANAL_DRAFT_LOW_THRESHOLD: float = 12.0   # max draft (metres) below this → HI
 CANAL_NORMAL_DRAFT:        float = 13.4   # historical normal max draft (metres)
 PROVIDER_PANAMA:           str   = "panama_canal"
 
+# ── Known API roles ───────────────────────────────────────────────────────────
+# Canonical list of (role_key, description) pairs used by the Sources tab dropdown.
+# role_key must exactly match the value each module passes to db.get_api_key().
+# Add new entries here when wiring in a new paid/key-gated data source.
+ROLE_NEWS_CONNECTOR: str = "news_connector"  # role shared by all generic news API entries
+
+KNOWN_API_ROLES: list[tuple[str, str]] = [
+    (PROVIDER_NEWSAPI,    "NewsAPI.org — AP, Reuters, 150k+ sources (1-day delay on free)"),
+    (AIS_API_KEY_NAME,    "AISstream — vessel tracking at chokepoints"),
+    (USDA_API_KEY_NAME,   "USDA NASS — crop condition reports"),
+    (EIA_API_KEY_NAME,    "EIA — weekly petroleum inventory"),
+    (PROVIDER_GMAIL_WSJ,  "Gmail app password — WSJ PDF delivery"),
+    (ROLE_NEWS_CONNECTOR, "News Connector — generic REST/JSON news API (add as many as you want)"),
+]
+
 # ── Chokepoint definitions ────────────────────────────────────────────────────
 # Each entry: lat/lon centre + bounding box for AIS vessel counting.
 # Also used by the TUI world-map to place markers.
@@ -365,3 +492,63 @@ WSJ_BACKFILL_LIMIT_DAYS: int = 50
 WSJ_LAST_POLLED_KEY: str = "wsj_last_polled"
 # Settings key for the Gmail address (not sensitive — stored plaintext in settings).
 WSJ_GMAIL_USER_KEY: str = "wsj_gmail_user"
+
+# ── TUI Display Config ────────────────────────────────────────────────────────
+# These constants drive the Bloomberg TUI (app.py) display logic.
+# Kept here so they can be tuned without touching UI code.
+
+# Screener tab — market-cap bucket boundaries (lower bound, $ float).
+SCREENER_MCAP_BUCKETS: dict[str, float] = {
+    "Mega (>200B)": 200e9,
+    "Large (10B+)": 10e9,
+    "Mid (2B+)":    2e9,
+    "Small (<2B)":  0.0,
+}
+
+# Screener tab — P/E score range buckets (display label → (min, max) score).
+SCREENER_PE_BUCKETS: dict[str, tuple[int, int]] = {
+    "<15":    (0,    15),
+    "15–25":  (15,   25),
+    "25–50":  (25,   50),
+    ">50":    (50, 9999),
+}
+
+# Calendar tab — event type → Rich color for DayCell rendering.
+CALENDAR_EVENT_STYLES: dict[str, str] = {
+    "earnings":     "green",
+    "split":        "cyan",
+    "ipo":          "yellow",
+    "economic":     "magenta",
+    "ex_dividend":  "gold1",
+    "dividend_pay": "orange3",
+}
+
+# Stock Picks tab — source key → human-readable label.
+SIGNAL_SOURCE_LABELS: dict[str, str] = {
+    "senate_watcher": "Senate Watcher",
+    "house_watcher":  "House Watcher",
+    "sec_form4":      "SEC Form 4",
+    "sec_13f":        "SEC 13F",
+    "yahoo_finance":  "Yahoo Finance",
+    "options_flow":   "Options Flow",
+}
+
+# Home heatmap — (pct_change_threshold, background_color) pairs, highest first.
+HEATMAP_COLORS: list[tuple[float, str]] = [
+    ( 3.0, "#0d5c0d"),
+    ( 1.5, "#165e16"),
+    ( 0.3, "#1e4d1e"),
+    ( 0.0, "#2a2a2a"),
+    (-1.5, "#4d1e1e"),
+    (-3.0, "#5e1616"),
+    (-9e9, "#6b0d0d"),
+]
+
+# Home heatmap — filter button (label, widget_id) pairs.
+HEATMAP_FILTERS: list[tuple[str, str]] = [
+    ("All",       "hf-all"),
+    ("Large Cap", "hf-largecap"),
+    ("Mega Cap",  "hf-megacap"),
+    ("S&P ≈500",  "hf-sp500"),
+    ("Watchlist", "hf-watchlist"),
+]

@@ -36,13 +36,15 @@ from screener_config import (
     NEWS_SOURCE_MORGAN_STANLEY,
     NEWS_SOURCE_MOTLEY_FOOL,
     NEWS_SOURCE_YAHOO_FINANCE,
-    WSJ_PODCAST_FEEDS,
-    MORGAN_STANLEY_PODCAST_FEED,
-    MOTLEY_FOOL_PODCAST_FEED,
+    PODCAST_FEEDS,
     SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW,
     HEATMAP_DEFAULT_LIMIT, HEATMAP_LARGE_CAP_THRESHOLD,
     HEATMAP_MEGA_CAP_THRESHOLD, HEATMAP_SP500_LIMIT,
     FILINGS_CACHE_DIR,
+    SCREENER_MCAP_BUCKETS, SCREENER_PE_BUCKETS,
+    CALENDAR_EVENT_STYLES,
+    SIGNAL_SOURCE_LABELS,
+    HEATMAP_COLORS, HEATMAP_FILTERS,
 )
 
 # ── Formatting helpers ─────────────────────────────────────────────────────────
@@ -64,6 +66,13 @@ def _fmt_pct(v: float | None, decimals: int = 1) -> str:
         return "—"
     sign = "+" if v > 0 else ""
     return f"{sign}{v * 100:.{decimals}f}%"
+
+
+def _fmt_pct_abs(v: float | None, decimals: int = 2) -> str:
+    """Format as absolute percentage — no leading + sign. For yields, ratios, ownership."""
+    if v is None:
+        return "—"
+    return f"{v * 100:.{decimals}f}%"
 
 
 def _fmt_ratio(v: float | None, decimals: int = 2) -> str:
@@ -192,6 +201,8 @@ class StockQuoteModal(ModalScreen[None]):
         def r(v: float | None, d: int = 2) -> str:
             return _fmt_ratio(v, d) if v is not None else "—"
 
+        a = _fmt_pct_abs  # absolute-rate formatter: no leading + sign
+
         sections: list[tuple[str, list[tuple[str, str]]]] = [
             ("VALUATION", [
                 ("P/E (TTM)",           r(s.get("pe_ratio"), 1)),
@@ -200,8 +211,13 @@ class StockQuoteModal(ModalScreen[None]):
                 ("P/S Ratio",           r(s.get("ps_ratio"))),
                 ("P/B Ratio",           r(s.get("pb_ratio"))),
                 ("Market Cap",          _fmt_mcap(s.get("market_cap"))),
-                ("Dividend Yield",      p(s.get("dividend_yield"))),
-                ("Payout Ratio",        p(s.get("payout_ratio"))),
+            ]),
+            ("DIVIDENDS", [
+                ("Dividend Yield",      a(s.get("dividend_yield"))),
+                ("Payout Ratio",        a(s.get("payout_ratio"))),
+                ("Last Dividend",       f"${s['last_dividend_value']:.4f}" if s.get("last_dividend_value") else "—"),
+                ("Ex-Dividend Date",    (s.get("ex_dividend_date") or "—")[:10]),
+                ("Pay Date",            (s.get("dividend_date") or "—")[:10]),
             ]),
             ("MARGINS & RETURNS", [
                 ("Gross Margin",        p(s.get("gross_margin"))),
@@ -590,6 +606,15 @@ class Sidebar(Vertical):
     NavItem { padding: 1 2; color: $text-muted; }
     NavItem:hover { background: $primary-darken-2; color: $text; }
     NavItem.active { background: $primary; color: $background; text-style: bold; }
+    #ticker-search {
+        margin: 1 1 0 1;
+        width: 1fr;
+    }
+    #ticker-search-label {
+        padding: 0 2;
+        color: $text-muted;
+        margin-top: 1;
+    }
     #sidebar-user {
         dock: bottom;
         padding: 1 2;
@@ -604,9 +629,19 @@ class Sidebar(Vertical):
         yield NavItem("  RESEARCH",  "research",  id="nav-research")
         yield NavItem("  LOGISTICS", "logistics", id="nav-logistics")
         yield NavItem("  SETTINGS",  "settings",  id="nav-settings")
+        yield Label("  Quote Search", id="ticker-search-label")
+        yield Input(placeholder="Ticker… (Enter)", id="ticker-search")
         user = getattr(self.app, "current_user", None)
         name = (user.get("display_name") or user.get("username")) if user else ""
         yield Label(f"  {name}", id="sidebar-user")
+
+    def on_input_submitted(self, event) -> None:
+        if event.input.id != "ticker-search":
+            return
+        ticker = event.value.strip().upper()
+        event.input.value = ""
+        if ticker:
+            self.app.push_screen(StockQuoteModal(ticker))
 
     def set_active(self, section: str) -> None:
         for item in self.query(NavItem):
@@ -621,20 +656,6 @@ class Sidebar(Vertical):
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Screener tab ───────────────────────────────────────────────────────────────
-
-_MCAP_BUCKETS = {
-    "Mega (>200B)": 200e9,
-    "Large (10B+)": 10e9,
-    "Mid (2B+)":    2e9,
-    "Small (<2B)":  0.0,
-}
-
-_PE_BUCKETS = {
-    "<15":    (0,    15),
-    "15–25":  (15,   25),
-    "25–50":  (25,   50),
-    ">50":    (50, 9999),
-}
 
 _SIGNAL_FILTERS = {
     "All Stocks":         lambda r: True,
@@ -667,11 +688,11 @@ class ScreenerTab(Vertical):
                 [("Sector: Any", "")], value="", id="scr-sector", allow_blank=False,
             )
             yield Select(
-                [("MCap: Any", ""), *[(k, k) for k in _MCAP_BUCKETS]],
+                [("MCap: Any", ""), *[(k, k) for k in SCREENER_MCAP_BUCKETS]],
                 value="", id="scr-mcap", allow_blank=False,
             )
             yield Select(
-                [("P/E: Any", ""), *[(k, k) for k in _PE_BUCKETS]],
+                [("P/E: Any", ""), *[(k, k) for k in SCREENER_PE_BUCKETS]],
                 value="", id="scr-pe", allow_blank=False,
             )
             yield Select(
@@ -693,7 +714,7 @@ class ScreenerTab(Vertical):
             self.query_one("#scr-note", Label).update("No scans yet. Run: python screener_run.py")
             return
         scan = scans[0]
-        self._all_results = db.get_scan_results(scan["scan_uid"])
+        self._all_results = db.get_scan_results(scan["scan_uid"], limit=2000)
         # populate sector filter dynamically
         sectors = sorted({r.get("sector") or "" for r in self._all_results if r.get("sector")})
         sel = self.query_one("#scr-sector", Select)
@@ -716,13 +737,13 @@ class ScreenerTab(Vertical):
         pe_key   = self.query_one("#scr-pe",       Select).value or ""
         sig_key  = str(self.query_one("#scr-signal", Select).value or "All Stocks")
 
-        mcap_min = _MCAP_BUCKETS.get(mcap_key, 0) if mcap_key else 0
+        mcap_min = SCREENER_MCAP_BUCKETS.get(mcap_key, 0) if mcap_key else 0
         mcap_max = (
-            _MCAP_BUCKETS.get(list(_MCAP_BUCKETS.keys())[
-                list(_MCAP_BUCKETS.keys()).index(mcap_key) - 1
-            ], 9e18) if mcap_key and list(_MCAP_BUCKETS.keys()).index(mcap_key) > 0 else 9e18
+            SCREENER_MCAP_BUCKETS.get(list(SCREENER_MCAP_BUCKETS.keys())[
+                list(SCREENER_MCAP_BUCKETS.keys()).index(mcap_key) - 1
+            ], 9e18) if mcap_key and list(SCREENER_MCAP_BUCKETS.keys()).index(mcap_key) > 0 else 9e18
         ) if mcap_key else 9e18
-        pe_range = _PE_BUCKETS.get(pe_key) if pe_key else None
+        pe_range = SCREENER_PE_BUCKETS.get(pe_key) if pe_key else None
         sig_fn   = _SIGNAL_FILTERS.get(sig_key, lambda r: True)
 
         filtered = [
@@ -760,19 +781,14 @@ class ScreenerTab(Vertical):
 
 # ── Calendar tab ───────────────────────────────────────────────────────────────
 
-_EVENT_STYLE: dict[str, str] = {
-    "earnings": "green",
-    "split":    "cyan",
-    "ipo":      "yellow",
-    "economic": "magenta",
-}
 
-_FILTER_TO_ETYPE: dict[str, str | None] = {
-    "all":      None,
-    "earnings": "earnings",
-    "splits":   "split",
-    "ipos":     "ipo",
-    "economic": "economic",
+_FILTER_TO_ETYPE: dict[str, str | list[str] | None] = {
+    "all":       None,
+    "earnings":  "earnings",
+    "splits":    "split",
+    "ipos":      "ipo",
+    "economic":  "economic",
+    "dividends": ["ex_dividend", "dividend_pay"],
 }
 
 
@@ -795,7 +811,7 @@ class DayCell(Static):
         text.append("\n")
         for ev in events[:5]:
             etype = ev.get("event_type", "")
-            style = _EVENT_STYLE.get(etype, "white")
+            style = CALENDAR_EVENT_STYLES.get(etype, "white")
             title = (ev.get("title") or "")[:14]
             text.append(f"\n{title}", style=style)
         self.update(text)
@@ -830,8 +846,8 @@ class CalendarTab(Vertical):
             yield Button("◀", id="btn-prev-wk", variant="default")
             yield Label("", id="week-label")
             yield Button("▶", id="btn-next-wk", variant="default")
-            for lbl, key in [("All", "all"), ("Earnings", "earnings"),
-                              ("Splits", "splits"), ("IPOs", "ipos"), ("Economic", "economic")]:
+            for lbl, key in [("All", "all"), ("Earnings", "earnings"), ("Splits", "splits"),
+                              ("IPOs", "ipos"), ("Economic", "economic"), ("Dividends", "dividends")]:
                 yield Button(lbl, id=f"cal-f-{key}", classes="cal-filter")
         with Horizontal(id="week-grid"):
             for i in range(7):
@@ -842,6 +858,7 @@ class CalendarTab(Vertical):
         table = self.query_one(DataTable)
         table.add_columns("Ticker", "Event", "Date", "Details")
         self.query_one("#cal-f-all", Button).add_class("active")
+        db.sync_dividend_calendar_events()
         self._refresh()
 
     def watch__week_offset(self, _: int) -> None:
@@ -895,6 +912,8 @@ class CalendarTab(Vertical):
                 detail = f"Range: ${ev['ipo_price_low']:.0f}–${hi:.0f}" if hi else f"${ev['ipo_price_low']:.0f}"
             elif ev.get("split_ratio"):
                 detail = f"Ratio: {ev['split_ratio']}"
+            elif ev.get("event_type") in ("ex_dividend", "dividend_pay"):
+                detail = str(ev.get("detail") or "")[:50]
             elif ev.get("detail"):
                 detail = str(ev["detail"])[:50]
             table.add_row(ticker, ev.get("title") or "", ev.get("event_date") or "", detail)
@@ -989,7 +1008,8 @@ class StockComparisonTab(Vertical):
             self.query_one("#cmp-note", Label).update("Enter at least one ticker.")
             return
 
-        stocks = [db.get_stock_by_ticker(t) for t in tickers]
+        stock_map = db.get_stocks_by_tickers(tickers)
+        stocks = [stock_map.get(t) for t in tickers]
         names = [
             (s.get("company_name") or s["ticker"]) if s else f"({t} not found)"
             for s, t in zip(stocks, tickers)
@@ -1043,15 +1063,6 @@ class StockComparisonTab(Vertical):
 
 # ── Stock Picks tab ────────────────────────────────────────────────────────────
 
-_SOURCE_LABELS: dict[str, str] = {
-    "senate_watcher": "Senate Watcher",
-    "house_watcher":  "House Watcher",
-    "sec_form4":      "SEC Form 4",
-    "sec_13f":        "SEC 13F",
-    "yahoo_finance":  "Yahoo Finance",
-    "options_flow":   "Options Flow",
-}
-
 
 class StockPicksTab(ScrollableContainer):
     CSS = """
@@ -1075,6 +1086,10 @@ class StockPicksTab(ScrollableContainer):
         self._load_picks()
 
     def _load_picks(self) -> None:
+        # Remove any cards from a previous load before mounting new ones.
+        for old in self.query(Collapsible):
+            old.remove()
+
         scans = db.get_recent_scans(1)
         if not scans:
             self.query_one("#picks-note", Label).update(
@@ -1125,7 +1140,7 @@ class StockPicksTab(ScrollableContainer):
         if signals:
             lines.append("  Source Signals:")
             for sig in signals[:6]:
-                src  = _SOURCE_LABELS.get(sig.get("source") or "", sig.get("source") or "")
+                src  = SIGNAL_SOURCE_LABELS.get(sig.get("source") or "", sig.get("source") or "")
                 sub  = sig.get("sub_score")
                 sub_str = f"{sub:.0f}" if sub is not None else "—"
                 reason = (sig.get("reason_text") or "")[:60]
@@ -1288,24 +1303,14 @@ class ResearchReportsTab(ScrollableContainer):
 
 # ── Heatmap tile ───────────────────────────────────────────────────────────────
 
-_HEAT_COLORS: list[tuple[float, str]] = [
-    ( 3.0, "#0d5c0d"),
-    ( 1.5, "#165e16"),
-    ( 0.3, "#1e4d1e"),
-    ( 0.0, "#2a2a2a"),  # near-flat
-    (-1.5, "#4d1e1e"),
-    (-3.0, "#5e1616"),
-    (-9e9, "#6b0d0d"),
-]
-
 
 def _heat_bg(pct: float | None) -> str:
     if pct is None:
         return "#1a1a1a"
-    for threshold, color in _HEAT_COLORS:
+    for threshold, color in HEATMAP_COLORS:
         if pct >= threshold:
             return color
-    return _HEAT_COLORS[-1][1]
+    return HEATMAP_COLORS[-1][1]
 
 
 class HeatmapTile(Static):
@@ -1425,13 +1430,13 @@ class WorldMap(Static):
         self._events = events
 
     def on_mount(self) -> None:
-        self._render()
+        self._draw_map()
 
     def update_events(self, events: list[dict]) -> None:
         self._events = events
-        self._render()
+        self._draw_map()
 
-    def _render(self) -> None:
+    def _draw_map(self) -> None:
         grid = [list(row) for row in _BASE_MAP_GRID]
 
         marker_map: dict[tuple[int, int], str] = {}
@@ -1467,14 +1472,6 @@ class WorldMap(Static):
 
 # ── Home panel ─────────────────────────────────────────────────────────────────
 
-_HEATMAP_FILTERS: list[tuple[str, str]] = [
-    ("All",       "hf-all"),
-    ("Large Cap", "hf-largecap"),
-    ("Mega Cap",  "hf-megacap"),
-    ("S&P ≈500",  "hf-sp500"),
-    ("Watchlist", "hf-watchlist"),
-]
-
 
 class HomePanel(Vertical):
     CSS = """
@@ -1506,7 +1503,7 @@ class HomePanel(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("Loading…", id="home-stats")
         with Horizontal(id="home-filter-row"):
-            for label, btn_id in _HEATMAP_FILTERS:
+            for label, btn_id in HEATMAP_FILTERS:
                 variant = "primary" if label == "All" else "default"
                 yield Button(label, id=btn_id, variant=variant)
         with ScrollableContainer(id="heatmap-scroller"):
@@ -1520,14 +1517,12 @@ class HomePanel(Vertical):
         try:
             scans    = db.get_recent_scans(1)
             events   = db.get_active_events()
-            total    = db.query_one("SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0")
-            enriched = db.query_one(
-                "SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0 AND last_enriched_at IS NOT NULL"
-            )
+            total    = db.get_active_stock_count()
+            enriched = db.get_enriched_stock_count()
             last_scan = scans[0] if scans else None
             parts = [
-                f"Stocks: {total['n'] if total else '?'} active",
-                f"  Enriched: {enriched['n'] if enriched else '?'}",
+                f"Stocks: {total} active",
+                f"  Enriched: {enriched}",
                 f"  SC events: {len(events)}",
             ]
             if last_scan:
@@ -1556,7 +1551,7 @@ class HomePanel(Vertical):
         grid.remove_children()
 
         # Highlight active filter button
-        for label, btn_id in _HEATMAP_FILTERS:
+        for label, btn_id in HEATMAP_FILTERS:
             try:
                 btn = self.query_one(f"#{btn_id}", Button)
                 btn.variant = "primary" if label == mode else "default"
@@ -1820,11 +1815,12 @@ class SettingsPanel(Vertical):
         user_uid = user.get("user_uid", 1)
         saved    = db.get_all_settings(user_uid)
 
+        _wsj_urls = [u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_WSJ_PODCAST]
         defaults: dict[str, str] = {
-            "wsj_podcast_feed_1":  WSJ_PODCAST_FEEDS[0] if WSJ_PODCAST_FEEDS else "",
-            "wsj_podcast_feed_2":  WSJ_PODCAST_FEEDS[1] if len(WSJ_PODCAST_FEEDS) > 1 else "",
-            "morgan_stanley_feed": MORGAN_STANLEY_PODCAST_FEED,
-            "motley_fool_feed":    MOTLEY_FOOL_PODCAST_FEED,
+            "wsj_podcast_feed_1":  _wsj_urls[0] if len(_wsj_urls) > 0 else "",
+            "wsj_podcast_feed_2":  _wsj_urls[1] if len(_wsj_urls) > 1 else "",
+            "morgan_stanley_feed": next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MORGAN_STANLEY), ""),
+            "motley_fool_feed":    next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MOTLEY_FOOL), ""),
             "whisper_model":       NEWS_WHISPER_MODEL,
         }
         for key, _ in self._FEED_FIELDS:

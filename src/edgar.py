@@ -40,7 +40,7 @@ from screener_config import (
     EDGAR_RATE_LIMIT, EDGAR_STALENESS_DAYS, EDGAR_FILING_STALENESS, EDGAR_IDENTITY,
     EDGAR_8K_LOOKBACK_DAYS, EDGAR_8K_STALENESS_DAYS,
     FACT_GEOGRAPHIC_REVENUE, FACT_CUSTOMER_CONCENTRATION,
-    FACT_RISK_FLAGS, FACT_FILING_CUSTOMERS, FACT_8K_EVENTS,
+    FACT_RISK_FLAGS, FACT_FILING_CUSTOMERS, FACT_8K_EVENTS, FACT_LLM_10K_ENTITIES,
     EVENT_TYPE_FIRE, EVENT_TYPE_FLOOD, EVENT_TYPE_NATURAL_DISASTER,
     EVENT_TYPE_INFRASTRUCTURE, EVENT_TYPE_PRODUCT_RECALL, EVENT_TYPE_CYBER,
     EVENT_STATUS_MONITORING, SEVERITY_MEDIUM, SEVERITY_HIGH, CONFIDENCE_MEDIUM,
@@ -48,7 +48,7 @@ from screener_config import (
     FILINGS_CACHE_DIR,
 )
 
-_EDGAR_HEADERS   = {"User-Agent": "StackScreener antv311@gmail.com"}
+_EDGAR_HEADERS   = {"User-Agent": EDGAR_IDENTITY}
 
 _CIK_MAP_URL     = "https://www.sec.gov/files/company_tickers.json"
 
@@ -383,14 +383,12 @@ def _get_pending_filings(limit: int | None = None) -> list[dict]:
     return db.query(sql, params)
 
 
-def fetch_filing_text(limit: int | None = None) -> None:
-    """
-    Download the latest 10-K for each pending stock via edgartools, extract
-    supply-chain risk flags and customer percentage mentions, store as edgar_facts.
+def _with_edgartools():
+    """Context manager that temporarily unmasks the edgartools 'edgar' package.
 
-    edgartools installs as the 'edgar' package — same name as this file.
-    We swap sys.modules['edgar'] to the real package for the entire call,
-    then restore this module's entry in the finally block so nothing else breaks.
+    Because this file is also named edgar.py, importing 'edgar' inside src/ would
+    resolve to this module. We remove src/ from sys.path for the duration and
+    restore everything in the finally block.
     """
     import importlib as _il
     import os as _os
@@ -402,21 +400,40 @@ def fetch_filing_text(limit: int | None = None) -> None:
     _sys.path = [p for p in _sys.path
                  if _os.path.normpath(_os.path.abspath(p)) != src_dir]
     try:
-        _et          = _il.import_module("edgar")
-        Company      = _et.Company
-        set_identity = _et.set_identity
-        set_identity(EDGAR_IDENTITY)
+        _et = _il.import_module("edgar")
+        _et.set_identity(EDGAR_IDENTITY)
+        yield _et
+    finally:
+        _sys.path = old_path
+        if old_mod is not None:
+            _sys.modules["edgar"] = old_mod
+
+
+# _with_edgartools is a generator-based context manager — wrap with contextlib
+import contextlib as _contextlib
+_with_edgartools = _contextlib.contextmanager(_with_edgartools)
+
+
+def fetch_and_cache_10k(limit: int | None = None) -> None:
+    """Stage 1 of the 10-K pipeline: download text, cache to disk, run fast keyword
+    extraction, and enqueue an extract_10k LLM job for Stage 2.
+
+    Skips stocks whose current accession is already cached on disk.
+    Does NOT run the LLM — that is the LLM worker's job (llm.py --worker).
+    """
+    with _with_edgartools() as _et:
+        Company = _et.Company
 
         pending = _get_pending_filings(limit)
         if not pending:
             print("10-K filing text is up to date.")
             return
 
-        print(f"Fetching 10-K text for {len(pending)} stocks...")
-        ok = failed = skipped = 0
+        print(f"Fetching & caching 10-K text for {len(pending)} stocks...")
+        ok = failed = skipped = cached_hit = 0
 
         for i, stock in enumerate(pending, 1):
-            ticker = stock["ticker"]
+            ticker  = stock["ticker"]
             try:
                 company  = Company(ticker)
                 filings  = company.get_filings(form="10-K").latest(1)
@@ -428,20 +445,22 @@ def fetch_filing_text(limit: int | None = None) -> None:
 
                 accession   = str(filings.accession_number or "unknown").replace("/", "-")
                 cik_str     = str(stock.get("cik") or "unknown")
-                cached      = _read_cached_filing("10k", ticker, cik_str, accession)
+                cache_file  = _cache_path("10k", ticker, cik_str, accession)
+                cached_text = _read_cached_filing("10k", ticker, cik_str, accession)
 
-                if cached:
-                    full_text = cached
-                    tenk      = filings.obj()
+                if cached_text:
+                    full_text   = cached_text
+                    fiscal_year = str(datetime.now().year)  # best-effort without re-parsing
+                    cached_hit += 1
                 else:
-                    tenk      = filings.obj()
-                    biz_text  = str(tenk.business    or "")
-                    risk_text = str(tenk.risk_factors or "")
-                    full_text = biz_text + "\n" + risk_text
+                    tenk        = filings.obj()
+                    biz_text    = str(tenk.business    or "")
+                    risk_text   = str(tenk.risk_factors or "")
+                    full_text   = biz_text + "\n" + risk_text
+                    fiscal_year = (tenk.period_of_report or "")[:4] or str(datetime.now().year)
                     _write_cached_filing("10k", ticker, cik_str, accession, full_text)
 
-                fiscal_year = (tenk.period_of_report or "")[:4] or str(datetime.now().year)
-
+                # Fast keyword extraction — no GPU needed
                 risk_flags = _extract_risk_flags(full_text)
                 customers  = _extract_customer_pct_mentions(full_text)
 
@@ -451,7 +470,6 @@ def fetch_filing_text(limit: int | None = None) -> None:
                     "period":     fiscal_year,
                     "value_json": json.dumps(risk_flags),
                 })
-
                 if customers:
                     db.upsert_edgar_fact({
                         "stock_uid":  stock["stock_uid"],
@@ -460,10 +478,24 @@ def fetch_filing_text(limit: int | None = None) -> None:
                         "value_json": json.dumps(customers),
                     })
 
+                # Enqueue LLM deep-extraction job (Stage 2 — consumed by llm.py --worker)
+                db.enqueue_llm_job(
+                    "extract_10k",
+                    json.dumps({
+                        "file_path":   str(cache_file),
+                        "ticker":      ticker,
+                        "stock_uid":   stock["stock_uid"],
+                        "fiscal_year": fiscal_year,
+                    }),
+                    source_ref=f"ticker:{ticker}",
+                    priority=6,  # lower priority than news classification
+                )
+
                 flag_count = sum(risk_flags.values())
+                src = "cache" if cached_text else "EDGAR"
                 print(
-                    f"  OK [{i}/{len(pending)}] {ticker}: "
-                    f"{flag_count} risk flags, {len(customers)} customer mentions"
+                    f"  OK [{i}/{len(pending)}] {ticker} [{src}]: "
+                    f"{flag_count} risk flags, {len(customers)} customer mentions → LLM queued"
                 )
                 ok += 1
 
@@ -473,12 +505,65 @@ def fetch_filing_text(limit: int | None = None) -> None:
 
             time.sleep(EDGAR_RATE_LIMIT)
 
-        print(f"\nDone - {ok} fetched, {skipped} no filing, {failed} failed.")
+        print(
+            f"\nDone - {ok} fetched ({cached_hit} from cache), "
+            f"{skipped} no filing, {failed} failed."
+        )
 
-    finally:
-        _sys.path = old_path
-        if old_mod is not None:
-            _sys.modules["edgar"] = old_mod
+
+def check_new_10k_filings(limit: int | None = None) -> None:
+    """Lightweight accession check: query EDGAR for each stock's latest 10-K accession
+    and compare against the local disk cache. Stocks with a new accession get their
+    risk_flags edgar_fact deleted so they re-queue on the next --fetch-filings run.
+
+    This is fast (only fetches filing metadata, not the full document text).
+    """
+    with _with_edgartools() as _et:
+        Company = _et.Company
+
+        stocks_with_cik = db.query(
+            "SELECT stock_uid, ticker, cik FROM stocks WHERE cik IS NOT NULL AND delisted = 0 ORDER BY ticker"
+        )
+        if limit is not None:
+            stocks_with_cik = stocks_with_cik[:limit]
+
+        if not stocks_with_cik:
+            print("No stocks with CIK found — run --seed-ciks first.")
+            return
+
+        print(f"Checking {len(stocks_with_cik)} stocks for new 10-K filings...")
+        new_found = checked = 0
+        cache_dir = Path(FILINGS_CACHE_DIR) / "10k"
+
+        for i, stock in enumerate(stocks_with_cik, 1):
+            ticker  = stock["ticker"]
+            cik_str = str(stock.get("cik") or "")
+            try:
+                company = Company(ticker)
+                filings = company.get_filings(form="10-K").latest(1)
+                if not filings:
+                    continue
+
+                accession  = str(filings.accession_number or "unknown").replace("/", "-")
+                cache_file = cache_dir / f"{ticker}_{cik_str}_{accession}.txt"
+                checked   += 1
+
+                if not cache_file.exists():
+                    # New or updated filing — clear the fact so --fetch-filings re-downloads it
+                    db.query(
+                        "DELETE FROM edgar_facts WHERE stock_uid = ? AND fact_type = ?",
+                        (stock["stock_uid"], FACT_RISK_FLAGS),
+                    )
+                    print(f"  NEW [{i}] {ticker}: accession {accession} not in cache → re-queued")
+                    new_found += 1
+
+                time.sleep(EDGAR_RATE_LIMIT / 2)  # metadata only — lighter rate limit
+
+            except Exception as e:
+                if DEBUG_MODE:
+                    print(f"[check-new] {ticker}: {e}")
+
+        print(f"\nDone — {checked} checked, {new_found} new filings found (will fetch on next --fetch-filings run).")
 
 
 # ── 8-K material event pipeline ───────────────────────────────────────────────
@@ -785,12 +870,13 @@ def print_china_exposure(min_pct: float) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="StackScreener EDGAR XBRL pipeline")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--seed-ciks",      action="store_true",           help="Map all tickers to SEC CIKs (run once)")
-    group.add_argument("--fetch-facts",    action="store_true",           help="Pull XBRL geographic and customer facts for all stocks")
-    group.add_argument("--fetch-filings",  action="store_true",           help="Download 10-K text and extract supply-chain risk flags")
-    group.add_argument("--fetch-8k",       action="store_true",           help="Scan recent 8-K filings for material supply-chain events")
-    group.add_argument("--china-exposure", type=float, metavar="MIN_PCT", help="Print stocks with China revenue >= MIN_PCT (e.g. 0.15 for 15%%)")
-    parser.add_argument("--limit",         type=int,   default=None, metavar="N", help="Process at most N stocks then exit")
+    group.add_argument("--seed-ciks",        action="store_true",           help="Map all tickers to SEC CIKs (run once)")
+    group.add_argument("--fetch-facts",      action="store_true",           help="Pull XBRL geographic and customer facts for all stocks")
+    group.add_argument("--fetch-filings",    action="store_true",           help="Stage 1: download 10-K text, cache to disk, keyword-extract, enqueue LLM job")
+    group.add_argument("--check-new-filings",action="store_true",           help="Check EDGAR for new 10-K accessions vs local cache; mark stale entries for re-fetch")
+    group.add_argument("--fetch-8k",         action="store_true",           help="Scan recent 8-K filings for material supply-chain events")
+    group.add_argument("--china-exposure",   type=float, metavar="MIN_PCT", help="Print stocks with China revenue >= MIN_PCT (e.g. 0.15 for 15%%)")
+    parser.add_argument("--limit",           type=int,   default=None, metavar="N", help="Process at most N stocks then exit")
     args = parser.parse_args()
 
     db.init_db()
@@ -800,7 +886,9 @@ def main() -> None:
     elif args.fetch_facts:
         fetch_facts(args.limit)
     elif args.fetch_filings:
-        fetch_filing_text(args.limit)
+        fetch_and_cache_10k(args.limit)
+    elif args.check_new_filings:
+        check_new_10k_filings(args.limit)
     elif args.fetch_8k:
         fetch_8k_filings(args.limit)
     elif args.china_exposure is not None:

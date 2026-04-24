@@ -19,16 +19,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from datetime import datetime, timedelta
 
 import requests
 
-sys.path.insert(0, __file__.replace("commodities.py", ""))
 import db
 from screener_config import (
     DEBUG_MODE,
+    COMMODITIES_USER_AGENT,
     EDGAR_RATE_LIMIT,
     USDA_API_BASE, USDA_API_KEY_NAME,
     SIGNAL_CROP_STRESS, CROP_STRESS_SCORE,
@@ -40,7 +39,7 @@ from screener_config import (
     EVENT_TYPE_NATURAL_DISASTER,
 )
 
-_HEADERS = {"User-Agent": "StackScreener/1.0 commodities@stackscreener.local"}
+_HEADERS = {"User-Agent": COMMODITIES_USER_AGENT}
 
 # Crop → affected stock sectors (used when promoting to supply_chain_events)
 _CROP_SECTORS: dict[str, list[str]] = {

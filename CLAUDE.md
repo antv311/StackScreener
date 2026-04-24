@@ -66,22 +66,23 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | File | Project | Owns |
 |---|---|---|
 | `screener_config.py` | Shared | ALL constants, weights, thresholds, status strings, `DEBUG_MODE` |
-| `db.py` | Shared | All SQLite reads/writes — no other file touches the DB |
+| `db.py` | Shared | All SQLite reads/writes — no other file touches the DB (19 tables) |
 | `crypto.py` | Shared | Fernet encryption + OS keyring key management + password hashing |
 | `seeder.py` | Shared | One-time schema init, default user seed, NYSE/NASDAQ universe fetch |
 | `screener.py` | Shared | Core scoring logic only — no hardcoded magic numbers |
 | `screener_run.py` | Shared | CLI entry point and scan orchestration only |
-| `enricher.py` | P1 | Background fundamentals worker + daily IPO calendar check |
+| `enricher.py` | P1 | Background fundamentals worker + daily IPO calendar check + dividend normalization |
 | `supply_chain.py` | P1 | Supply chain signal ingestion and sector mapping only |
-| `edgar.py` | P1 | SEC EDGAR pipeline: CIK seeding, XBRL facts, 10-K text extraction |
+| `edgar.py` | P1 | SEC EDGAR pipeline: CIK seeding, XBRL facts, two-stage 10-K pipeline, 8-K material events |
 | `news.py` | P1 | News/media aggregation + ticker tagging |
 | `llm.py` | P1 | LLM extraction pipeline — TurboQuant quantization, inference, 3 extraction tasks |
 | `inst_flow.py` | P1 | Congressional trades (Senate + House) + SEC Form 4/13F ingestion |
-| `scraper_app.py` | P1 | Data Scraper TUI — logs, manual triggers, source manager, LLM panel |
+| `commodities.py` | P1 | USDA crop conditions + EIA petroleum → upstream commodity signals |
+| `logistics.py` | P1 | AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals |
+| `wsj_fetcher.py` | P1 | Automated WSJ PDF download via Gmail IMAP + Chrome automation |
+| `scraper_app.py` | P1 | Data Scraper TUI — 20 pipeline buttons, log tail, Queue tab, Sources tab |
 | `db_app.py` | P2 | Database & Server TUI — SQL shell, table browser, API server controls |
 | `app.py` | P3 | Bloomberg TUI (Textual) — UI only, no business logic |
-| `pdf_generator.py` | P3 | PDF output only — fpdf2 API |
-| `mailer.py` | P4 | Email delivery only |
 
 ---
 
@@ -151,19 +152,24 @@ Match the agreed design from `CONTEXT.md` and `Mock_up/`. Three sidebar sections
 2. **Research** — six tabs: Screener · Calendar · Stock Comparison · Stock Picks · Research Reports · News
 3. **Logistics** — active supply chain events table (world map in P3 next)
 
+**Sidebar ticker search bar:**
+- Input widget at the bottom of the sidebar; type any ticker symbol + Enter
+- Resolves to `db.get_stock_by_ticker()` and opens `StockQuoteModal` directly
+
 **Research tab conventions:**
 - `ScreenerTab` — filter dropdowns (Exchange/Sector/MCap/P/E/Signal) + DataTable; filter in-memory after one DB load; cap display at 200 rows; Enter on row → `StockQuoteModal`
-- `CalendarTab` — DayCell widgets in a 7-column Horizontal; `_week_offset` reactive drives week navigation; filter buttons per event type
+- `CalendarTab` — DayCell widgets in a 7-column Horizontal; `_week_offset` reactive drives week navigation; filter buttons per event type including Dividends; calls `db.sync_dividend_calendar_events()` on mount
 - `StockComparisonTab` — 4 ticker inputs → `db.get_stock_by_ticker()` lookups → DataTable with section headers and ▲/▼ highlights; remount DataTable on each compare to reset columns
 - `StockPicksTab` — Collapsible cards for top 15 scan results; source signals from `db.get_stock_signals()`; "Open Quote →" button per card → `StockQuoteModal`
 - `ResearchReportsTab` — Static cards from `db.get_research_reports()`; handles empty state
 - `NewsTab` — filter buttons per source; `db.get_news_articles()` with LEFT JOIN for ticker
 
 **`StockQuoteModal` conventions:**
-- `ModalScreen[None]` — triggered by Enter (Screener) or button click (Picks); ESC/Q to dismiss
-- All data loaded from DB on mount — no network calls; 4 tabs: Overview, Signals, History, News
-- Overview renders a single `Static` with markup via `"\n".join(parts)` — do not mount per-row widgets
+- `ModalScreen[None]` — triggered by Enter (Screener), button click (Picks), or ticker search bar; ESC/Q to dismiss
+- All data loaded from DB on mount — no network calls; 5 tabs: Overview, Signals, History, News, Filings
+- Overview renders a single `Static` with markup via `"\n".join(parts)` — do not mount per-row widgets; includes DIVIDENDS section
 - History uses `db.get_price_history(stock_uid, start_date=...)` — last 365 days, most recent first
+- Filings tab lists cached `.txt` files from `src/filings/`; click row → preview first 3,000 chars
 
 Do not invent new screens or reorganize navigation without confirming first.
 
@@ -192,7 +198,7 @@ Do not invent new screens or reorganize navigation without confirming first.
 
 - All scan output goes to `src/Results/<scan_mode>/<datetime>/`
 - `Results/` is gitignored — never commit scan output
-- PDF generation uses fpdf2 — see `pdf_generator.py`
+- Filing text cache lives in `src/filings/10k/` and `src/filings/8k/` (gitignored)
 
 ---
 
@@ -207,6 +213,7 @@ __pycache__/
 Results/
 src/News/audio/
 src/News/pdfs/
+src/filings/
 stackscreener.db
 *.db
 ```

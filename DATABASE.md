@@ -2,7 +2,7 @@
 
 All tables live in `stackscreener.db`. All access goes through `db.py` only.
 Schema is created by `db.init_db()`. Migrations (new columns) run automatically on startup.
-**16 tables total. 8 covering indexes.**
+**19 tables total. 9 covering indexes.**
 
 ---
 
@@ -10,30 +10,37 @@ Schema is created by `db.init_db()`. Migrations (new columns) run automatically 
 
 ```
 users
- ├── watchlists          (user_uid → users)
- │    └── stocks         (watchlist_uid → watchlists)
- ├── api_keys            (user_uid → users)
- └── portfolio           (user_uid → users, stock_uid → stocks)
+ ├── watchlists              (user_uid → users)
+ │    └── stocks             (watchlist_uid → watchlists)
+ ├── api_keys                (user_uid → users)
+ ├── portfolio               (user_uid → users, stock_uid → stocks)
+ ├── settings                (user_uid → users)
+ ├── newsapi_keywords        (user_uid → users)
+ └── llm_jobs                (no FK deps — standalone queue)
 
 stocks
- ├── scan_results        (stock_uid → stocks)
- ├── event_stocks        (stock_uid → stocks)
- ├── calendar_events     (stock_uid → stocks)
- ├── source_signals      (stock_uid → stocks)
- ├── research_reports    (stock_uid → stocks)
- ├── portfolio           (stock_uid → stocks)
- └── price_history       (stock_uid → stocks)
+ ├── scan_results            (stock_uid → stocks)
+ ├── event_stocks            (stock_uid → stocks)
+ ├── calendar_events         (stock_uid → stocks)
+ ├── source_signals          (stock_uid → stocks)
+ ├── research_reports        (stock_uid → stocks)
+ ├── portfolio               (stock_uid → stocks)
+ ├── price_history           (stock_uid → stocks)
+ ├── edgar_facts             (stock_uid → stocks)
+ └── news_articles           (stock_uid → stocks)
 
 scans
- └── scan_results        (scan_uid → scans)
+ └── scan_results            (scan_uid → scans)
 
 supply_chain_events
- ├── event_stocks        (supply_chain_event_uid → supply_chain_events)
- └── research_reports    (supply_chain_event_uid → supply_chain_events)
+ ├── event_stocks            (supply_chain_event_uid → supply_chain_events)
+ └── research_reports        (supply_chain_event_uid → supply_chain_events)
+
+newsapi_sources              (no FK deps — catalog table)
 ```
 
 **Creation order** (respects FK deps):
-`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports → price_history`
+`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports → price_history → edgar_facts → settings → news_articles → llm_jobs → newsapi_keywords → newsapi_sources`
 
 ---
 
@@ -78,7 +85,7 @@ SELECT * FROM stocks WHERE watchlist_uid = ? AND is_watched = 1
 ---
 
 ### stocks
-Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in background by `enricher.py`.
+Every tracked NYSE/NASDAQ symbol. ~7,001 rows after seeding. Enriched in background by `enricher.py`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -107,6 +114,11 @@ Every tracked NYSE/NASDAQ symbol. ~6,900 rows after seeding. Enriched in backgro
 | `insider_ownership`, `inst_ownership` | REAL | |
 | `shares_outstanding`, `shares_float` | INTEGER | |
 | `average_volume`, `current_volume` | INTEGER | |
+| `dividend_yield` | REAL | trailing twelve-month yield (normalized: 0.0695 not 6.95) |
+| `payout_ratio` | REAL | |
+| `ex_dividend_date` | TEXT | YYYY-MM-DD — next ex-dividend date |
+| `dividend_date` | TEXT | YYYY-MM-DD — next dividend pay date |
+| `last_dividend_value` | REAL | most recent per-share dividend amount |
 | `last_enriched_at` | TEXT | NULL = never enriched; staleness check |
 | `macro_signal` | TEXT | reserved for macro overlay |
 | `cik` | TEXT | SEC Central Index Key — populated by `edgar.py --seed-ciks` |
@@ -130,20 +142,24 @@ UPDATE stocks SET delisted = 1 WHERE stock_uid = ?;
 ---
 
 ### api_keys
-Fernet-encrypted API credentials per user. `url` allows storing any REST endpoint generically.
+Fernet-encrypted API credentials per user. Supports named display labels, base URLs, and
+role-based connector mapping.
 
 | Column | Type | Notes |
 |---|---|---|
 | `api_uid` | INTEGER PK | |
 | `user_uid` | INTEGER FK → users | |
-| `name` | TEXT | provider label — UNIQUE per user |
+| `name` | TEXT | provider role key — UNIQUE per user (e.g. `aisstream`, `newsapi`) |
 | `api_key` | TEXT | **Fernet-encrypted** — never plaintext |
 | `url` | TEXT | base URL of endpoint (optional) |
+| `display_name` | TEXT | cosmetic label shown in Sources tab (e.g. "Bloomberg Shipping") |
+| `connector_config` | TEXT | JSON blob for connector-specific settings |
+| `role` | TEXT | role key from `KNOWN_API_ROLES` in screener_config.py |
 | `created_at`, `updated_at` | TEXT | |
 
 ```python
-# Store:  db.set_api_key(user_uid, 'senate_watcher', 'my-key', url='https://...')
-# Fetch:  db.get_api_key(user_uid, 'senate_watcher')  # returns plaintext in memory only
+# Store:  db.set_api_key(user_uid, 'aisstream', 'my-key', url='wss://...', display_name='AISstream')
+# Fetch:  db.get_api_key(user_uid, 'aisstream')  # returns plaintext in memory only
 ```
 
 ---
@@ -235,7 +251,7 @@ Active and historical disruption events. Drives the Logistics map.
 | `detected_at`, `resolved_at`, `updated_at` | TEXT | |
 
 **Event types** (`screener_config.py`):
-`conflict` · `sanctions` · `weather` · `labor` · `accident` · `port_blockage` · `factory_shutdown` · `pandemic`
+`conflict` · `sanctions` · `weather` · `labor` · `accident` · `port_blockage` · `factory_shutdown` · `pandemic` · `fire` · `flood` · `natural_disaster` · `infrastructure_failure` · `product_recall` · `cybersecurity`
 
 ---
 
@@ -267,13 +283,14 @@ ORDER BY es.role, s.ticker
 ---
 
 ### calendar_events
-Earnings, splits, IPOs, economic events. IPOs pre-seeded by `enricher.py` daily.
+Earnings, splits, IPOs, economic events, and dividend dates. IPOs pre-seeded by `enricher.py`
+daily. Dividend events auto-synced from `stocks` by `db.sync_dividend_calendar_events()`.
 
 | Column | Type | Notes |
 |---|---|---|
 | `calendar_event_uid` | INTEGER PK | |
 | `stock_uid` | INTEGER FK → stocks | nullable for macro events |
-| `event_type` | TEXT | `earnings` / `split` / `ipo` / `economic` |
+| `event_type` | TEXT | `earnings` / `split` / `ipo` / `economic` / `ex_dividend` / `dividend_pay` |
 | `event_date` | TEXT | YYYY-MM-DD |
 | `title` | TEXT | |
 | `eps_estimate`, `eps_actual` | REAL | earnings-specific |
@@ -284,6 +301,9 @@ Earnings, splits, IPOs, economic events. IPOs pre-seeded by `enricher.py` daily.
 | `detail` | TEXT | free text for macro events |
 | `status` | TEXT | `upcoming` / `confirmed` / `reported` |
 | `fetched_at`, `updated_at` | TEXT | |
+
+**Event types** (`screener_config.py`):
+`earnings` · `split` · `ipo` · `economic` · `ex_dividend` · `dividend_pay`
 
 ---
 
@@ -300,7 +320,7 @@ Per-stock signals from congressional trades, SEC filings, and options flow.
 | `source` | TEXT | `senate_watcher` · `house_watcher` · `sec_form4` · `sec_13f` · `yahoo_finance` · `options_flow` |
 | `sub_score` | REAL | 0–100 score from this source |
 | `reason_text` | TEXT | shown in Stock Picks card |
-| `signal_type` | TEXT | `congress_buy` · `insider_buy` · `inst_accumulation` · `options_flow` · `analyst_rec` |
+| `signal_type` | TEXT | `congress_buy` · `insider_buy` · `inst_accumulation` · `options_flow` · `analyst_rec` · `material_event` |
 | `signal_url` | TEXT | link to original filing/source |
 | `raw_data` | TEXT | JSON blob for reprocessing |
 | `fetched_at` | TEXT | UNIQUE with stock_uid + source |
@@ -326,7 +346,8 @@ Long-form research cards shown in the Research → Research Reports tab.
 ---
 
 ### edgar_facts
-Structured XBRL and 10-K text data pulled from SEC EDGAR for each stock. Refreshed quarterly (XBRL) or every 6 months (10-K text).
+Structured XBRL and 10-K/8-K text data pulled from SEC EDGAR for each stock.
+Refreshed quarterly (XBRL) or via the two-stage 10-K pipeline.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -342,6 +363,7 @@ Structured XBRL and 10-K text data pulled from SEC EDGAR for each stock. Refresh
 - `customer_concentration` — `[{"name": "Apple Inc.", "pct": 0.18, "segment": "Products"}]`
 - `risk_flags` — `{"china_dependency": true, "tariff_risk": false, ...}` — 8 boolean supply-chain risk flags from 10-K text
 - `filing_customers` — `[{"name": "Walmart", "pct": 0.22}]` — customer % mentions extracted from 10-K narrative
+- `llm_10k_entities` — `[{"name": "TSMC", "type": "supplier", "ticker": "TSM", "context": "..."}]` — LLM-extracted supplier/customer entities from 10-K text
 
 **Indexes:**
 - `idx_edgar_facts_stock_type` on `(stock_uid, fact_type)` — per-stock fact lookup
@@ -362,7 +384,8 @@ db.get_active_china_events()      # active events where country_code='CN' or reg
 ---
 
 ### price_history
-Daily OHLCV bars + corporate actions (dividends, splits) per stock. Enables charting, backtesting, and dividend growth tracking.
+Daily OHLCV bars + corporate actions (dividends, splits) per stock. Enables charting,
+backtesting, and dividend growth tracking. 6,808,808 rows after full history fetch.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -405,6 +428,110 @@ db.set_setting(user_uid, "scan_top_n", "25")
 db.get_all_settings(user_uid)  # → {"theme": "dark", "scan_top_n": "25", ...}
 ```
 
+
+---
+
+**Indexes:**
+- `idx_news_articles_source_pub` on `(source, published_at DESC)` — News tab filter queries
+
+### news_articles
+Headlines, transcripts, and article text from all news sources. One row per article/episode.
+Ticker mentions from each article create rows in `source_signals`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `article_uid` | INTEGER PK | |
+| `stock_uid` | INTEGER FK → stocks | Primary ticker — nullable |
+| `source` | TEXT | `wsj_podcast` · `wsj_pdf` · `morgan_stanley_podcast` · `motley_fool_podcast` · `yahoo_finance_news` · `ap_news` · `cnbc` · `marketwatch` · `newsapi` · `gdelt` |
+| `headline` | TEXT | Article headline or podcast episode title |
+| `summary` | TEXT | Short description or RSS teaser |
+| `body` | TEXT | Full transcript or article text |
+| `url` | TEXT | Audio URL, article URL, or absolute PDF path — UNIQUE with source |
+| `published_at` | TEXT | |
+| `sentiment` | REAL | NULL until sentiment scoring added |
+| `llm_classified` | INTEGER | 1 = already processed by classify_news LLM job; 0 = pending |
+| `fetched_at` | TEXT | |
+
+```python
+# Store an article:
+db.upsert_news_article({"source": "wsj_podcast", "headline": "...", "url": "...", ...})
+
+# Fetch recent articles:
+db.get_news_articles(source="wsj_pdf", limit=10)
+db.get_news_articles_for_stock(stock_uid, limit=20)
+```
+
+---
+
+### llm_jobs
+Job queue for LLM extraction work. Serialises all LLM calls through a single worker process
+to prevent VRAM deadlock on 8GB GPUs. Processed by `llm.py --worker`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `job_uid` | INTEGER PK | |
+| `job_type` | TEXT | `classify_news` · `extract_10k` · `parse_8k` |
+| `status` | TEXT | `pending` · `running` · `done` · `failed` · `paused` · `cancelled` |
+| `priority` | INTEGER | 1 (highest) – 9 (lowest); default 5 |
+| `input_json` | TEXT | JSON input payload for the job |
+| `result_json` | TEXT | JSON result, populated on completion |
+| `error_text` | TEXT | error message if status = `failed` |
+| `retries` | INTEGER | retry count; max 3 before `failed` |
+| `source_ref` | TEXT | freeform back-reference (e.g. `article_uid:42` or `cik:0001234`) |
+| `created_at` | TEXT | |
+| `started_at` | TEXT | |
+| `completed_at` | TEXT | |
+
+```python
+# Enqueue a job:
+db.enqueue_llm_job(job_type='classify_news', input_json='{"article_uid": 42, ...}', priority=5)
+
+# Worker loop pattern (used by llm.py --worker):
+job = db.dequeue_next_llm_job()     # returns highest-priority pending job, marks running
+db.complete_llm_job(job_uid, result_json)
+db.fail_llm_job(job_uid, error_text)
+
+# Queue controls from scraper_app Queue tab:
+db.pause_llm_jobs(job_type)         # set status=paused for all pending of given type
+db.resume_llm_jobs(job_type)        # set status=pending for all paused of given type
+db.cancel_llm_jobs(job_type)        # set status=cancelled for all pending/paused
+db.set_job_priority(job_type, priority)   # update priority for all pending/paused
+db.get_distinct_job_types()         # list of job types with pending counts
+```
+
+
+---
+
+### newsapi_keywords
+Per-user keyword list for NewsAPI searches. Used by `news.py --newsapi` to drive keyword
+queries without hardcoding terms.
+
+| Column | Type | Notes |
+|---|---|---|
+| `keyword_uid` | INTEGER PK | |
+| `user_uid` | INTEGER FK → users | |
+| `keyword` | TEXT | search term, UNIQUE with user_uid |
+| `enabled` | INTEGER | 1 = active (default); 0 = disabled |
+| `created_at` | TEXT | |
+
+
+---
+
+### newsapi_sources
+NewsAPI source catalog, cached from the NewsAPI `/sources` endpoint. Used to populate
+the Sources tab dropdown and allow per-source filtering in `news.py`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `source_uid` | INTEGER PK | |
+| `user_uid` | INTEGER FK → users | scoped per user |
+| `source_id` | TEXT | NewsAPI source ID (e.g. `reuters`) — UNIQUE with user_uid |
+| `name` | TEXT | human-readable source name |
+| `category` | TEXT | `business` · `general` · `technology` etc. |
+| `country` | TEXT | ISO 3166-1 alpha-2 |
+| `language` | TEXT | ISO 639-1 code |
+| `enabled` | INTEGER | 1 = active; 0 = disabled (default 0) |
+
 ---
 
 ## Key Query Patterns
@@ -444,6 +571,14 @@ WHERE event_type = 'ipo'
   AND event_date BETWEEN date('now') AND date('now', '+30 days')
 ORDER BY event_date;
 
+-- Upcoming dividend events (next 30 days)
+SELECT ce.event_type, ce.event_date, ce.title, s.ticker
+FROM calendar_events ce
+JOIN stocks s USING (stock_uid)
+WHERE ce.event_type IN ('ex_dividend', 'dividend_pay')
+  AND ce.event_date BETWEEN date('now') AND date('now', '+30 days')
+ORDER BY ce.event_date;
+
 -- Dividend history for a stock (growth tracking)
 SELECT date, dividend
 FROM price_history
@@ -459,35 +594,15 @@ ORDER BY date ASC;
 -- Recent news for a stock
 SELECT headline, source, published_at FROM news_articles
 WHERE stock_uid = ? ORDER BY published_at DESC LIMIT 20;
-```
 
----
+-- Pending LLM jobs (ordered by priority then enqueue time)
+SELECT * FROM llm_jobs
+WHERE status = 'pending'
+ORDER BY priority ASC, enqueued_at ASC;
 
-**Indexes:**
-- `idx_news_articles_source_pub` on `(source, published_at DESC)` — News tab filter queries
-
-### news_articles
-Headlines, transcripts, and article text from all news sources. One row per article/episode.
-Ticker mentions from each article create rows in `source_signals`.
-
-| Column | Type | Notes |
-|---|---|---|
-| `article_uid` | INTEGER PK | |
-| `stock_uid` | INTEGER FK → stocks | Primary ticker — nullable |
-| `source` | TEXT | `wsj_podcast` · `wsj_pdf` · `morgan_stanley_podcast` · `motley_fool_podcast` · `yahoo_finance_news` |
-| `headline` | TEXT | Article headline or podcast episode title |
-| `summary` | TEXT | Short description or RSS teaser |
-| `body` | TEXT | Full transcript or article text |
-| `url` | TEXT | Audio URL, article URL, or absolute PDF path — UNIQUE with source |
-| `published_at` | TEXT | |
-| `sentiment` | REAL | NULL until sentiment scoring added |
-| `fetched_at` | TEXT | |
-
-```python
-# Store an article:
-db.upsert_news_article({"source": "wsj_podcast", "headline": "...", "url": "...", ...})
-
-# Fetch recent articles:
-db.get_news_articles(source="wsj_pdf", limit=10)
-db.get_news_articles_for_stock(stock_uid, limit=20)
+-- LLM job queue stats by type
+SELECT job_type, status, COUNT(*) as cnt
+FROM llm_jobs
+GROUP BY job_type, status
+ORDER BY job_type, status;
 ```

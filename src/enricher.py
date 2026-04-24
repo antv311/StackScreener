@@ -48,8 +48,16 @@ def _ts_to_date(ts) -> str | None:
         return None
 
 
+def _norm_yield(v) -> float | None:
+    """yfinance returns dividendYield as either 0.0695 or 6.95 depending on the ticker; divides by 100 when > 1.0 to normalise."""
+    if v is None:
+        return None
+    f = float(v)
+    return f / 100 if f > 1.0 else f
+
+
 def _map_info(ticker: str, exchange: str, info: dict) -> dict:
-    """Map a yfinance .info dict to our stocks schema columns."""
+    """price falls back to 0.0 when both currentPrice and regularMarketPrice are absent (pre-IPO stubs), preserving the stock row without crashing."""
     return {
         "ticker":               ticker.upper(),
         "exchange":             _norm_exchange(info.get("exchange")) or exchange,
@@ -59,7 +67,10 @@ def _map_info(ticker: str, exchange: str, info: dict) -> dict:
         "country":              info.get("country"),
         "business_summary":     info.get("longBusinessSummary"),
         "market_cap":           info.get("marketCap"),
-        "dividend_yield":       info.get("dividendYield"),
+        "dividend_yield":       _norm_yield(info.get("dividendYield")),
+        "ex_dividend_date":     _ts_to_date(info.get("exDividendDate")),
+        "dividend_date":        _ts_to_date(info.get("dividendDate")),
+        "last_dividend_value":  info.get("lastDividendValue"),
         "float_short":          info.get("shortPercentOfFloat"),
         "analyst_recom":        info.get("recommendationMean"),
         "earnings_date":        _ts_to_date(info.get("earningsTimestamp")),
@@ -218,7 +229,9 @@ def run(
     history_only: bool = False,
     history_period: str = "5y",
     skip_delisted: bool = True,
+    force: bool = False,
 ) -> None:
+    """When force=True, resets all staleness timestamps before fetching the pending list so every stock is re-enriched."""
     check_upcoming_ipos()
 
     if ipo_only:
@@ -227,6 +240,10 @@ def run(
     if history_only:
         _run_history(rate_limit, num_workers, limit, history_period, skip_delisted)
         return
+
+    if force:
+        db.reset_enrichment_staleness(skip_delisted)
+        print("Force mode: reset last_enriched_at for all stocks.")
 
     pending = db.get_pending_enrichment(limit, skip_delisted)
     if not pending:
@@ -361,6 +378,7 @@ def main() -> None:
     parser.add_argument("--history-only",   action="store_true",                        help="Fetch price history only, then exit")
     parser.add_argument("--history-period",   type=str,   default="5y", metavar="PERIOD", help="yfinance history period (default: 5y). Options: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max")
     parser.add_argument("--include-delisted", action="store_true",                        help="Include delisted stocks (default: skip them)")
+    parser.add_argument("--force",            action="store_true",                        help="Force re-enrich all stocks by resetting staleness timestamps")
     args = parser.parse_args()
 
     run(
@@ -371,6 +389,7 @@ def main() -> None:
         history_only=args.history_only,
         history_period=args.history_period,
         skip_delisted=not args.include_delisted,
+        force=args.force,
     )
 
 

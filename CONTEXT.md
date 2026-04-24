@@ -13,7 +13,7 @@ positioned to benefit from supply chain disruptions.
 
 **Owner:** Tony (antv311)
 **Repo:** https://github.com/antv311/StackScreener
-**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, fpdf2, CurrencyConverter, Textual, cryptography, keyring
+**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, CurrencyConverter, Textual, cryptography, keyring
 
 ---
 
@@ -50,8 +50,9 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
    the Stock Quote Modal.
 
 2. **Calendar** — weekly calendar view with color-coded event chips
-   (green=Earnings, blue=Splits, yellow=IPOs). Filter tabs: All / Earnings / Splits / IPOs /
-   Economic. Detail table below the calendar grid.
+   (green=Earnings, blue=Splits, yellow=IPOs, teal=Ex-Dividend, purple=Dividend Pay). Filter tabs:
+   All / Earnings / Splits / IPOs / Economic / Dividends. Detail table below the calendar grid.
+   Dividend events auto-synced from `stocks` on tab mount via `sync_dividend_calendar_events()`.
 
 3. **Stock Comparison** — side-by-side comparison of up to 4 stocks. Sections: Valuation,
    Price Performance, Income Statement. Highs highlighted green ▲, lows red ▼.
@@ -68,14 +69,17 @@ See UI mockup screenshots in `Mock_up/` for reference. The HTML prototype is at
 
 ### Stock Quote Modal
 
-Triggered from: Screener (Enter on row) or Stock Picks ("Open Quote →" button).
+Triggered from: Screener (Enter on row), Stock Picks ("Open Quote →" button), or the
+sidebar ticker search bar (type ticker + Enter).
 Press ESC or Q to close. All data from DB — no network calls on open.
 
 - **Overview** — 40+ fields: valuation, margins, growth, risk/technicals, performance,
-  ownership, plus EDGAR geographic revenue breakdown if available
+  ownership, DIVIDENDS section (yield, payout ratio, last dividend value, ex-date, pay date),
+  plus EDGAR geographic revenue breakdown if available
 - **Signals** — `source_signals` rows + supply chain event links for the stock
 - **History** — last 365 days of OHLCV from `price_history`, dividend column
 - **News** — recent `news_articles` for this stock
+- **Filings** — list of cached 10-K/8-K `.txt` files from `src/filings/`; click to preview first 3,000 chars
 
 ### Logistics ✅ Built
 - `WorldMap(Static)` widget: 74×18 equirectangular ASCII map, landmass in dim green `~`,
@@ -94,10 +98,12 @@ See `ROADMAP.md` for full per-project status and backlogs.
 ```
 ┌─────────────────────────────┐   ┌─────────────────────────────┐
 │  P1 — Data Scraper TUI      │   │  P2 — DB & Server TUI       │
-│  scraper_app.py  [PLANNED]  │   │  db_app.py  [PLANNED]       │
+│  scraper_app.py  ✅ Active  │   │  db_app.py  ✅ Active       │
 │                             │   │                             │
 │  enricher · edgar · news    │   │  db.py internals            │
 │  supply_chain · inst_flow   │   │  FastAPI server [FUTURE]    │
+│  commodities · logistics    │   │                             │
+│  llm · wsj_fetcher          │   │                             │
 └─────────────┬───────────────┘   └─────────────┬───────────────┘
               │                                 │
               ▼                                 ▼
@@ -105,7 +111,7 @@ See `ROADMAP.md` for full per-project status and backlogs.
      │               Shared Core                  │
      │  db.py · screener_config.py                │
      │  crypto.py · screener.py · screener_run.py │
-     │  SQLite: 16 tables, 8 indexes              │
+     │  SQLite: 19 tables, 9 indexes              │
      └───────────────────┬────────────────────────┘
                          │
           ┌──────────────┴──────────────┐
@@ -127,13 +133,13 @@ See `ROADMAP.md` for full per-project status and backlogs.
 yfinance / yahooquery         → price, fundamentals, IPO calendar, options chain
 Senate + House Stock Watcher  → congressional trades (inst_flow.py — built)
 SEC EDGAR XBRL                → geographic revenue, customer concentration (edgar.py — built)
-SEC EDGAR 10-K text           → risk flags, customer % mentions (edgar.py — built)
+SEC EDGAR 10-K text           → risk flags, customer % mentions (edgar.py — two-stage pipeline)
 SEC EDGAR Form 4              → insider buy/sell filings (inst_flow.py — built)
 SEC EDGAR Form 13F            → institutional holdings, 14 institutions (inst_flow.py — built)
 SEC EDGAR 8-K                 → material events: fire/flood/recall/cyber (edgar.py — built)
 yfinance options chain        → unusual call/put volume >3× OI (inst_flow.py — built)
 WSJ/MS/MF podcasts (Whisper)  → transcript news signals (news.py — built)
-WSJ PDF + Yahoo Finance news  → article signals (news.py — built)
+WSJ PDF (wsj_fetcher.py)      → Gmail IMAP check → Chrome download → news.py ingest
 AP News / CNBC / MarketWatch  → RSS article feeds (news.py — built)
 NewsAPI.org (AP+Reuters+150k) → REST API, free tier (news.py — built; requires key)
 GDELT Project                 → global event database, free (news.py — built)
@@ -148,7 +154,8 @@ Qwen2.5-7B validated 3/3 / 32B (prod) + TurboQuant 4-bit → LLM extraction (llm
 g=128 + Hadamard rotation. `src/llm.py` built and **validated 3/3** on Qwen2.5-7B-Instruct
 (8GB RTX 3080). Model at `models/qwen2.5-7b-4bit/` (4.6GB). P40 + 32B is production target.
 **VRAM rule: only one LLM process at a time** — two processes fill 8GB VRAM and deadlock.
-See `todonext.md` LLM section and `READMETQ.md` for full details.
+Use `llm.py --worker --limit N` to bound a batch run. See `todonext.md` LLM section and
+`READMETQ.md` for full details.
 
 **Available cp314 wheels (pre-built, Windows amd64):**
 - `torch-2.12.0a0+gitfafc7d6` — installed
@@ -165,30 +172,32 @@ StackScreener/
 ├── src/
 │   ├── — SHARED CORE —
 │   ├── screener_config.py          ← ALL constants, weights, thresholds, status values, DEBUG_MODE
-│   ├── db.py                       ← SQLite layer — ALL DB access goes here only (16 tables, 8 indexes)
+│   ├── db.py                       ← SQLite layer — ALL DB access goes here only (19 tables, 9 indexes)
 │   ├── crypto.py                   ← Fernet encryption (OS keyring) + password hashing
 │   ├── seeder.py                   ← one-time schema init + NYSE/NASDAQ universe fetch
 │   ├── screener.py                 ← core scoring engine (8 components + SC/flow overlays)
 │   ├── screener_run.py             ← scan runner / CLI (nsr/thematic/watchlist + CSV)
 │   ├── — P1: DATA SCRAPER —
-│   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check
+│   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check + dividend normalization
 │   ├── supply_chain.py             ← Tier 2 curated seed (9 events, 51 links) + Tier 1 sector matching
-│   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + 10-K risk flags + 8-K material events
+│   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + two-stage 10-K pipeline + 8-K material events
 │   ├── inst_flow.py                ← congressional trades + Form 4 insider trades + Form 13F + options flow
 │   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT + LLM classifier
-│   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B)
+│   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B); --worker --limit N
 │   ├── commodities.py              ← USDA crop conditions + EIA petroleum → upstream commodity signals
 │   ├── logistics.py                ← AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals
-│   ├── scraper_app.py              ← Data Scraper TUI entry point                        [PLANNED — P1]
+│   ├── wsj_fetcher.py              ← automated WSJ PDF downloader: Gmail IMAP + Chrome profile → src/News/pdfs/
+│   ├── scraper_app.py              ← Data Scraper TUI — 20 pipeline buttons, log tail, Queue tab, Sources tab
 │   ├── — P2: DATABASE & SERVER —
-│   ├── db_app.py                   ← Database & Server TUI entry point                   [PLANNED — P2]
+│   ├── db_app.py                   ← Database & Server TUI — table browser, SQL shell, DB stats
 │   ├── — P3: BLOOMBERG TUI —
-│   ├── app.py                      ← Bloomberg TUI — login, sidebar, Research tabs, Home heatmap, Logistics world map
-│   ├── pdf_generator.py            ← PDF reports (fpdf2)                                 [PLANNED — P3]
-│   ├── mailer.py                   ← email delivery                                      [PLANNED — P4]
+│   ├── app.py                      ← Bloomberg TUI — login, sidebar ticker search, Research tabs, Home heatmap, Logistics world map
 │   └── Results/                    ← scan output (gitignored)
+├── src/filings/
+│   ├── 10k/                        ← cached 10-K filing text ({ticker}_{cik}_{accession}.txt)
+│   └── 8k/                         ← cached 8-K filing text
 ├── sql_tables/                     ← canonical SQL table definitions (reference only — schema lives in db.py)
-│   └── *.sql                       ← 16 table definitions
+│   ├── *.sql                       ← all 19 table definitions present
 ├── src/News/
 │   ├── audio/                      ← temp MP3 storage (deleted after transcription, gitignored)
 │   └── pdfs/                       ← WSJ newspaper PDFs (kept, gitignored)
@@ -201,7 +210,7 @@ StackScreener/
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← 4-project roadmap with per-project backlogs
-├── DATABASE.md                     ← full schema map (all 16 tables, FKs, query patterns)
+├── DATABASE.md                     ← full schema map (all 19 tables, FKs, query patterns)
 ├── tree.md                         ← annotated file tree with entry points
 ├── requirements.txt
 └── README.md
@@ -213,25 +222,29 @@ StackScreener/
 
 All primary keys follow the `tablename_uid` convention. All tables live in `stackscreener.db`
 and are created by `db.init_db()`. All access goes through `db.py` only.
+**19 tables total. 9 covering indexes.**
 
 | Table | Purpose |
 |---|---|
 | `users` | User accounts — password hash + salt, admin flag, force-change flag, totp_secret (2FA prep) |
 | `watchlists` | Named watchlists, attached to a user via `user_uid` |
-| `stocks` | All tracked symbols — descriptive, fundamental, technical fields + `last_enriched_at` |
-| `api_keys` | Fernet-encrypted API credentials per user/provider |
+| `stocks` | All tracked symbols — descriptive, fundamental, technical fields + dividend columns + `last_enriched_at` |
+| `api_keys` | Fernet-encrypted API credentials per user/provider — includes url, display_name, connector_config, role |
 | `portfolio` | User holdings (Plaid-ready: quantity, avg_cost, plaid_account_id) |
 | `scans` | Scan run metadata (mode, status, counts, timestamps) |
 | `scan_results` | Per-symbol scored results for each scan run |
 | `supply_chain_events` | Active disruption events with lat/lon, severity, affected/beneficiary sectors |
 | `event_stocks` | Junction: which stocks are impacted or benefit from each event |
-| `calendar_events` | Earnings, splits, IPOs, economic events — upcoming IPOs pre-seeded here |
+| `calendar_events` | Earnings, splits, IPOs, economic events, ex_dividend, dividend_pay — upcoming IPOs pre-seeded |
 | `source_signals` | Per-stock signals from congressional trades, SEC filings, Yahoo, options flow |
 | `research_reports` | Long-form research content tagged by type |
 | `price_history` | Daily OHLCV bars + dividends + split factors per stock |
-| `edgar_facts` | XBRL geographic revenue + customer concentration per stock per year |
+| `edgar_facts` | XBRL geographic revenue + customer concentration + 10-K risk flags + llm_10k_entities per stock |
 | `settings` | Per-user key/value preferences (theme, scan defaults, etc.) |
 | `news_articles` | Headlines, full transcripts, WSJ PDF text — one row per article/episode |
+| `llm_jobs` | Job queue for LLM work (classify_news / extract_10k / parse_8k); statuses: pending/running/done/failed/paused/cancelled |
+| `newsapi_keywords` | Per-user keyword list for NewsAPI searches |
+| `newsapi_sources` | NewsAPI source catalog (cached from API) |
 
 Watchlist query pattern:
 ```sql

@@ -46,6 +46,7 @@ from screener_config import (
     INSIDER_SELL_SCORE,
     FORM4_LOOKBACK_DAYS,
     PROVIDER_SEC_EDGAR,
+    EDGAR_IDENTITY,
     EDGAR_RATE_LIMIT,
     SIGNAL_OPTIONS_UNUSUAL,
     OPTIONS_CALL_SCORE,
@@ -62,7 +63,7 @@ from screener_config import (
     INSTITUTION_CIKS,
 )
 
-_HEADERS = {"User-Agent": "StackScreener/1.0 (antv311@gmail.com)"}
+_HEADERS = {"User-Agent": EDGAR_IDENTITY}
 
 # Transaction type strings returned by the APIs
 _BUY_TYPES  = frozenset({"purchase", "buy", "exchange"})

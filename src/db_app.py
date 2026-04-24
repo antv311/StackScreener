@@ -232,7 +232,8 @@ class DBApp(App):
                 return
             cols = list(rows[0].keys())
             # Simple tabular output
-            widths = {c: max(len(c), max(len(str(r[c] or "")) for r in rows)) for c in cols}
+            sample = rows[:100]
+            widths = {c: max(len(c), max(len(str(r[c] or "")) for r in sample)) for c in cols}
             widths = {c: min(w, 40) for c, w in widths.items()}
             header = "  ".join(c.ljust(widths[c]) for c in cols)
             sep    = "  ".join("─" * widths[c] for c in cols)

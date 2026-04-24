@@ -30,16 +30,11 @@ from screener_config import (
     SCAN_TOP_N,
     SCAN_MODE_NSR, SCAN_MODE_THEMATIC, SCAN_MODE_WATCHLIST,
     SEVERITY_RANK, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
+    SC_CONFIDENCE_MULT,
     DEBUG_MODE,
 )
 
 _RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "Results")
-
-_CONFIDENCE_MULT: dict[str, float] = {
-    CONFIDENCE_HIGH:   1.0,
-    CONFIDENCE_MEDIUM: 0.75,
-    "low":             0.50,
-}
 
 
 # ── Signal pre-computation ─────────────────────────────────────────────────────
@@ -55,7 +50,7 @@ def _build_supply_chain_scores() -> dict[int, float]:
         if link["role"] != "beneficiary":
             continue
         sev_score = SEVERITY_RANK.get(link["severity"], 1) * 25.0  # max 100 for CRITICAL
-        conf_mult = _CONFIDENCE_MULT.get(link["confidence"] or "medium", 0.75)
+        conf_mult = SC_CONFIDENCE_MULT.get(link["confidence"] or "medium", 0.75)
         val = min(100.0, sev_score * conf_mult)
         stock_uid = link["stock_uid"]
         scores[stock_uid] = max(scores.get(stock_uid, 0.0), val)

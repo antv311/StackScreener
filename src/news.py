@@ -54,6 +54,10 @@ import yfinance as yf
 
 import db
 from screener_config import (
+    NEWSAPI_SOURCES_URL,
+    NEWSAPI_MAX_SOURCES_PER_CALL,
+    NEWSAPI_DEFAULT_KEYWORDS,
+    ROLE_NEWS_CONNECTOR,
     DEBUG_MODE,
     FFMPEG_BIN_DIR,
     NEWS_AUDIO_DIR,
@@ -77,9 +81,6 @@ from screener_config import (
     NEWS_SIGNAL_TRANSCRIPT_MENTION,
     NEWS_SIGNAL_NEWS_HEADLINE,
     PODCAST_FEEDS,
-    WSJ_PODCAST_FEEDS,
-    MORGAN_STANLEY_PODCAST_FEED,
-    MOTLEY_FOOL_PODCAST_FEED,
     AP_NEWS_RSS_FEEDS,
     CNBC_RSS_FEEDS,
     MARKETWATCH_RSS_FEED,
@@ -122,6 +123,8 @@ if FFMPEG_BIN_DIR and os.path.isdir(FFMPEG_BIN_DIR):
 _whisper_model = None
 _whisper_model_name: str = NEWS_WHISPER_MODEL
 _ticker_set: frozenset[str] | None = None
+_ticker_set_loaded_at: float = 0.0
+_TICKER_SET_TTL: float = 300.0  # seconds
 
 
 def set_whisper_model(name: str) -> None:
@@ -142,9 +145,11 @@ def _get_whisper_model():
 
 
 def _get_ticker_set() -> frozenset[str]:
-    global _ticker_set
-    if _ticker_set is None:
-        _ticker_set = db.get_all_tickers()  # already returns frozenset
+    global _ticker_set, _ticker_set_loaded_at
+    import time
+    if _ticker_set is None or (time.monotonic() - _ticker_set_loaded_at) > _TICKER_SET_TTL:
+        _ticker_set = db.get_all_tickers()
+        _ticker_set_loaded_at = time.monotonic()
     return _ticker_set
 
 
@@ -336,8 +341,9 @@ def _process_podcast(
 
 def fetch_wsj_podcasts(max_episodes: int = NEWS_MAX_EPISODES) -> int:
     """Fetch all configured WSJ podcast feeds, reading URLs from settings table."""
-    feed_1 = db.get_setting(1, "wsj_podcast_feed_1") or (WSJ_PODCAST_FEEDS[0] if WSJ_PODCAST_FEEDS else "")
-    feed_2 = db.get_setting(1, "wsj_podcast_feed_2") or (WSJ_PODCAST_FEEDS[1] if len(WSJ_PODCAST_FEEDS) > 1 else "")
+    _wsj_defaults = [u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_WSJ_PODCAST]
+    feed_1 = db.get_setting(1, "wsj_podcast_feed_1") or (_wsj_defaults[0] if len(_wsj_defaults) > 0 else "")
+    feed_2 = db.get_setting(1, "wsj_podcast_feed_2") or (_wsj_defaults[1] if len(_wsj_defaults) > 1 else "")
     total = 0
     for url in filter(None, [feed_1, feed_2]):
         total += _process_podcast(url, NEWS_SOURCE_WSJ_PODCAST, max_episodes)
@@ -345,12 +351,12 @@ def fetch_wsj_podcasts(max_episodes: int = NEWS_MAX_EPISODES) -> int:
 
 
 def fetch_morgan_stanley(max_episodes: int = NEWS_MAX_EPISODES) -> int:
-    url = db.get_setting(1, "morgan_stanley_feed") or MORGAN_STANLEY_PODCAST_FEED
+    url = db.get_setting(1, "morgan_stanley_feed") or next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MORGAN_STANLEY), "")
     return _process_podcast(url, NEWS_SOURCE_MORGAN_STANLEY, max_episodes)
 
 
 def fetch_motley_fool(max_episodes: int = NEWS_MAX_EPISODES) -> int:
-    url = db.get_setting(1, "motley_fool_feed") or MOTLEY_FOOL_PODCAST_FEED
+    url = db.get_setting(1, "motley_fool_feed") or next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MOTLEY_FOOL), "")
     return _process_podcast(url, NEWS_SOURCE_MOTLEY_FOOL, max_episodes)
 
 
@@ -361,12 +367,13 @@ def fetch_all_podcasts(max_episodes: int = NEWS_MAX_EPISODES) -> int:
     motley_fool_feed) — all other feeds use the config URL directly.
     """
     # Build overrides from the settings table for the 4 legacy keys
+    _wsj_defaults = [u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_WSJ_PODCAST]
     overrides: dict[str, str] = {}
     for setting_key, feed_url in [
-        ("wsj_podcast_feed_1",  WSJ_PODCAST_FEEDS[0] if WSJ_PODCAST_FEEDS else ""),
-        ("wsj_podcast_feed_2",  WSJ_PODCAST_FEEDS[1] if len(WSJ_PODCAST_FEEDS) > 1 else ""),
-        ("morgan_stanley_feed", MORGAN_STANLEY_PODCAST_FEED),
-        ("motley_fool_feed",    MOTLEY_FOOL_PODCAST_FEED),
+        ("wsj_podcast_feed_1",  _wsj_defaults[0] if len(_wsj_defaults) > 0 else ""),
+        ("wsj_podcast_feed_2",  _wsj_defaults[1] if len(_wsj_defaults) > 1 else ""),
+        ("morgan_stanley_feed", next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MORGAN_STANLEY), "")),
+        ("motley_fool_feed",    next((u for s, u in PODCAST_FEEDS if s == NEWS_SOURCE_MOTLEY_FOOL), "")),
     ]:
         saved = db.get_setting(1, setting_key)
         if saved:
@@ -577,22 +584,25 @@ def fetch_marketwatch_news(max_articles: int = NEWS_MAX_ARTICLES) -> int:
 # ── NewsAPI.org pipeline ──────────────────────────────────────────────────────
 
 def _fetch_newsapi_articles(
-    query: str,
     api_key: str,
     source_name: str,
-    domains: str | None = None,
+    query: str | None = None,
+    source_ids: list[str] | None = None,
     max_articles: int = NEWSAPI_PAGE_SIZE,
 ) -> int:
-    """Core NewsAPI helper. `domains` filters to a comma-separated list of domains."""
+    """Core NewsAPI fetch. Pass query, source_ids, or both. At least one is required."""
+    if not query and not source_ids:
+        return 0
     params: dict = {
-        "q":        query,
         "apiKey":   api_key,
         "pageSize": min(max_articles, 100),
         "language": "en",
         "sortBy":   "publishedAt",
     }
-    if domains:
-        params["domains"] = domains
+    if query:
+        params["q"] = query
+    if source_ids:
+        params["sources"] = ",".join(source_ids[:NEWSAPI_MAX_SOURCES_PER_CALL])
 
     try:
         resp = requests.get(NEWSAPI_BASE_URL, params=params, timeout=15)
@@ -604,7 +614,7 @@ def _fetch_newsapi_articles(
 
     articles = data.get("articles") or []
     existing = db.get_news_article_urls(source_name)
-    stored = 0
+    stored   = 0
     for art in articles:
         url = art.get("url") or ""
         if not url or url in existing:
@@ -630,30 +640,280 @@ def _fetch_newsapi_articles(
         time.sleep(NEWSAPI_RATE_LIMIT)
         stored += 1
 
+    label = query or f"{len(source_ids or [])} sources"
     if stored:
-        print(f"  [{source_name}] {stored} new articles for '{query}'")
+        print(f"  [{source_name}] {stored} new articles ({label})")
     return stored
 
 
-def fetch_newsapi(query: str, user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
-    """Fetch NewsAPI.org results for a keyword query (150k+ sources, AP, Reuters included)."""
+def refresh_newsapi_sources(user_uid: int = 1) -> int:
+    """Fetch the full publisher list from /v2/sources and upsert to newsapi_sources table.
+    Seeds default keywords on first call if the keywords table is empty.
+    """
     api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
     if not api_key:
-        print("  [newsapi] No API key. Store with: db.set_api_key(1, 'newsapi', 'YOUR_KEY')")
+        print("  [newsapi] No API key — set via Sources tab in scraper_app.")
         return 0
-    return _fetch_newsapi_articles(query, api_key, NEWS_SOURCE_NEWSAPI,
+    try:
+        resp = requests.get(
+            NEWSAPI_SOURCES_URL,
+            params={"apiKey": api_key, "language": "en"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        sources = resp.json().get("sources") or []
+    except Exception as e:
+        print(f"  [newsapi] Failed to fetch source list: {e}")
+        return 0
+
+    count = db.upsert_newsapi_sources(user_uid, sources)
+    print(f"  [newsapi] {count} sources synced from NewsAPI.")
+
+    if not db.get_newsapi_keywords(user_uid):
+        for kw in NEWSAPI_DEFAULT_KEYWORDS:
+            db.add_newsapi_keyword(user_uid, kw)
+        print(f"  [newsapi] Seeded {len(NEWSAPI_DEFAULT_KEYWORDS)} default keywords.")
+
+    return count
+
+
+def fetch_newsapi_configured(user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
+    """Run NewsAPI fetch using all DB-configured sources and keywords.
+    Sources are batched in groups of NEWSAPI_MAX_SOURCES_PER_CALL.
+    Each enabled keyword is a separate query.
+    """
+    api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
+    if not api_key:
+        print("  [newsapi] No API key.")
+        return 0
+
+    total = 0
+
+    source_ids = [s["source_id"] for s in db.get_newsapi_sources(user_uid, enabled_only=True)]
+    for i in range(0, len(source_ids), NEWSAPI_MAX_SOURCES_PER_CALL):
+        batch = source_ids[i : i + NEWSAPI_MAX_SOURCES_PER_CALL]
+        label = f"newsapi_sources"
+        total += _fetch_newsapi_articles(api_key, label, source_ids=batch, max_articles=max_articles)
+        time.sleep(NEWSAPI_RATE_LIMIT)
+
+    for kw_row in db.get_newsapi_keywords(user_uid):
+        if not kw_row["enabled"]:
+            continue
+        total += _fetch_newsapi_articles(
+            api_key, NEWS_SOURCE_NEWSAPI,
+            query=kw_row["keyword"],
+            max_articles=max_articles,
+        )
+        time.sleep(NEWSAPI_RATE_LIMIT)
+
+    print(f"  [newsapi] {total} total new articles from configured sources + keywords.")
+    return total
+
+
+def _get_nested(obj: dict, path: str):
+    """Traverse a dot-notation path into a nested dict. Empty path returns obj."""
+    if not path:
+        return obj
+    for key in path.split("."):
+        if not isinstance(obj, dict):
+            return None
+        obj = obj.get(key)
+    return obj
+
+
+def _get_api_key_row(name: str, user_uid: int) -> dict | None:
+    """Return the api_keys row for this name, with plaintext key decoded."""
+    row = db.query_one(
+        "SELECT * FROM api_keys WHERE user_uid = ? AND name = ?", (user_uid, name)
+    )
+    if row is None:
+        return None
+    d = dict(row)
+    try:
+        import crypto as _crypto
+        d["api_key_plain"] = _crypto.decrypt(d["api_key"]) if d.get("api_key") else None
+    except Exception:
+        d["api_key_plain"] = None
+    return d
+
+
+def test_news_connector(name: str, user_uid: int = 1) -> tuple[bool, str]:
+    """Make one minimal request using the stored connector config.
+    Returns (success, message) — message is shown in the TUI Logs tab.
+    """
+    row = _get_api_key_row(name, user_uid)
+    if not row:
+        return False, f"[{name}] No API key entry found."
+    api_key = row.get("api_key_plain") or ""
+    cfg = db.get_connector_config(user_uid, name)
+    if not cfg:
+        return False, f"[{name}] No connector config — configure the endpoint first."
+    if not row.get("url"):
+        return False, f"[{name}] No URL stored — set it in the connector config modal."
+
+    params: dict = dict(cfg.get("extra_params") or {})
+    page_param = cfg.get("page_size_param")
+    if page_param:
+        params[page_param] = 1
+    kw_param = cfg.get("keyword_param")
+    if kw_param:
+        params[kw_param] = "news"
+
+    headers: dict = {}
+    auth_type  = cfg.get("auth_type", "query_param")
+    auth_param = cfg.get("auth_param", "apiKey")
+    match auth_type:
+        case "query_param": params[auth_param] = api_key
+        case "bearer":      headers["Authorization"] = f"Bearer {api_key}"
+        case "header":      headers[auth_param] = api_key
+
+    try:
+        resp = requests.get(row["url"], params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        articles = _get_nested(data, cfg.get("articles_path", "articles")) or []
+        count = len(articles) if isinstance(articles, list) else "?"
+        return True, f"[{name}] Connection OK — {count} article(s) in test response (HTTP {resp.status_code})"
+    except Exception as exc:
+        return False, f"[{name}] Connection FAILED: {exc}"
+
+
+def fetch_generic_news_api(
+    name: str,
+    query: str | None = None,
+    user_uid: int = 1,
+    max_articles: int = NEWSAPI_PAGE_SIZE,
+) -> int:
+    """Fetch articles from any REST/JSON news API using its stored connector config.
+    `name` is the api_keys.name (unique label). Returns number of new articles stored.
+    """
+    row = _get_api_key_row(name, user_uid)
+    if not row:
+        print(f"  [{name}] No API key entry found.")
+        return 0
+    api_key = row.get("api_key_plain") or ""
+    cfg = db.get_connector_config(user_uid, name)
+    if not cfg:
+        print(f"  [{name}] No connector config — skipping.")
+        return 0
+    if not row.get("url"):
+        print(f"  [{name}] No URL configured — skipping.")
+        return 0
+
+    source_label = row.get("display_name") or name
+    page_size    = min(max_articles, cfg.get("default_page_size", 20))
+    params: dict = dict(cfg.get("extra_params") or {})
+    page_param   = cfg.get("page_size_param")
+    if page_param:
+        params[page_param] = page_size
+    if query:
+        kw_param = cfg.get("keyword_param")
+        if kw_param:
+            params[kw_param] = query
+
+    headers: dict = {}
+    auth_type  = cfg.get("auth_type", "query_param")
+    auth_param = cfg.get("auth_param", "apiKey")
+    match auth_type:
+        case "query_param": params[auth_param] = api_key
+        case "bearer":      headers["Authorization"] = f"Bearer {api_key}"
+        case "header":      headers[auth_param] = api_key
+
+    try:
+        resp = requests.get(row["url"], params=params, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        print(f"  [{source_label}] Request failed: {exc}")
+        return 0
+
+    raw_articles = _get_nested(data, cfg.get("articles_path", "articles")) or []
+    if not isinstance(raw_articles, list):
+        print(f"  [{source_label}] Unexpected response shape — articles_path may be wrong.")
+        return 0
+
+    fm      = cfg.get("field_map", {})
+    existing = db.get_news_article_urls(source_label)
+    stored   = 0
+    for art in raw_articles:
+        url = str(art.get(fm.get("url", "url")) or "")
+        if not url or url in existing:
+            continue
+        title   = str(art.get(fm.get("title", "title")) or "").strip()
+        desc    = str(art.get(fm.get("description", "description")) or "")[:1000]
+        body    = str(art.get(fm.get("body", "content")) or "")[:2000]
+        pub_str = art.get(fm.get("published_at", "publishedAt"))
+        if isinstance(pub_str, int):
+            from datetime import datetime as _dt
+            pub_str = _dt.utcfromtimestamp(pub_str).isoformat()
+
+        tickers = _tag_tickers(f"{title} {desc} {body}")
+        db.upsert_news_article({
+            "source":       source_label,
+            "headline":     title,
+            "summary":      desc or None,
+            "body":         body or None,
+            "url":          url,
+            "published_at": str(pub_str) if pub_str else None,
+        })
+        _store_ticker_signals(tickers, source_label, NEWS_SIGNAL_NEWS_HEADLINE,
+                              f"Mentioned in '{title}'", url)
+        time.sleep(NEWSAPI_RATE_LIMIT)
+        stored += 1
+
+    if stored:
+        print(f"  [{source_label}] {stored} new articles")
+    return stored
+
+
+def fetch_all_generic_news_connectors(user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
+    """Run all enabled api_keys rows with role=news_connector.
+    Each connector is run once per enabled keyword (shared keyword list), or once keyword-free
+    if no keywords are configured.
+    """
+    connectors = db.get_api_keys_by_role(user_uid, ROLE_NEWS_CONNECTOR)
+    enabled    = [c for c in connectors if c.get("connector_config") and c.get("url")]
+    if not enabled:
+        print("  [news_connectors] No configured connectors found.")
+        return 0
+
+    keywords = [k["keyword"] for k in db.get_newsapi_keywords(user_uid) if k["enabled"]]
+    total    = 0
+    for c in enabled:
+        label = c.get("display_name") or c["name"]
+        print(f"  [{label}]")
+        if keywords:
+            for kw in keywords:
+                total += fetch_generic_news_api(c["name"], query=kw, user_uid=user_uid,
+                                                max_articles=max_articles)
+                time.sleep(NEWSAPI_RATE_LIMIT)
+        else:
+            total += fetch_generic_news_api(c["name"], user_uid=user_uid,
+                                            max_articles=max_articles)
+    print(f"  [news_connectors] {total} total new articles from {len(enabled)} connector(s).")
+    return total
+
+
+def fetch_newsapi(query: str, user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
+    """Fetch NewsAPI.org results for a one-off keyword query."""
+    api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
+    if not api_key:
+        print("  [newsapi] No API key — set via Sources tab in scraper_app.")
+        return 0
+    return _fetch_newsapi_articles(api_key, NEWS_SOURCE_NEWSAPI, query=query,
                                    max_articles=max_articles)
 
 
 def fetch_reuters(user_uid: int = 1, max_articles: int = NEWSAPI_PAGE_SIZE) -> int:
-    """Fetch Reuters content via NewsAPI (Reuters discontinued public RSS in 2023)."""
+    """Fetch Reuters via NewsAPI source filter (backwards-compat wrapper).
+    Prefer enabling 'reuters' in the News tab for ongoing use.
+    """
     api_key = db.get_api_key(user_uid, PROVIDER_NEWSAPI)
     if not api_key:
-        print("  [reuters] NewsAPI key required. Store with: db.set_api_key(1, 'newsapi', 'YOUR_KEY')")
+        print("  [reuters] NewsAPI key required.")
         return 0
-    query = "supply chain OR commodity OR logistics OR sanctions OR trade"
-    return _fetch_newsapi_articles(query, api_key, NEWS_SOURCE_REUTERS,
-                                   domains="reuters.com", max_articles=max_articles)
+    return _fetch_newsapi_articles(api_key, NEWS_SOURCE_REUTERS,
+                                   source_ids=["reuters"], max_articles=max_articles)
 
 
 # ── GDELT pipeline ────────────────────────────────────────────────────────────
@@ -754,24 +1014,27 @@ def classify_unclassified_articles(limit: int = 50) -> int:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(
-    podcasts:       bool = False,
-    yahoo_tickers:  list[str] | None = None,
-    watchlist:      bool = False,
-    wsj_pdf:        str | None = None,
-    ingest_pdfs:    bool = False,
-    ap:             bool = False,
-    cnbc:           bool = False,
-    marketwatch:    bool = False,
-    reuters:        bool = False,
-    newsapi_query:  str | None = None,
-    gdelt_keywords: list[str] | None = None,
-    all_sources:    bool = False,
-    classify:       bool = False,
-    classify_limit: int = 50,
-    max_episodes:   int = NEWS_MAX_EPISODES,
-    max_articles:   int = NEWS_MAX_ARTICLES,
-    whisper_model:  str | None = None,
-    user_uid:       int = 1,
+    podcasts:         bool = False,
+    yahoo_tickers:    list[str] | None = None,
+    watchlist:        bool = False,
+    wsj_pdf:          str | None = None,
+    ingest_pdfs:      bool = False,
+    ap:               bool = False,
+    cnbc:             bool = False,
+    marketwatch:      bool = False,
+    reuters:          bool = False,
+    newsapi_query:    str | None = None,
+    newsapi_refresh:  bool = False,
+    newsapi_all:      bool = False,
+    connectors:       bool = False,
+    gdelt_keywords:   list[str] | None = None,
+    all_sources:      bool = False,
+    classify:         bool = False,
+    classify_limit:   int = 50,
+    max_episodes:     int = NEWS_MAX_EPISODES,
+    max_articles:     int = NEWS_MAX_ARTICLES,
+    whisper_model:    str | None = None,
+    user_uid:         int = 1,
 ) -> None:
     if whisper_model:
         set_whisper_model(whisper_model)
@@ -786,6 +1049,8 @@ def run(
         ap          = True
         cnbc        = True
         marketwatch = True
+        newsapi_all = True   # include configured NewsAPI sources + keywords when key is set
+        connectors  = True   # include all news_connector role entries
 
     if podcasts:
         print("-- Podcasts (all sources) -----------------------")
@@ -832,7 +1097,21 @@ def run(
         n = fetch_reuters(user_uid=user_uid, max_articles=max_articles)
         print(f"   {n} new articles\n")
 
-    if newsapi_query:
+    if newsapi_refresh:
+        print("-- NewsAPI: Refresh source list -----------------")
+        refresh_newsapi_sources(user_uid=user_uid)
+        print()
+
+    if newsapi_all:
+        print("-- NewsAPI: All configured sources + keywords ---")
+        n = fetch_newsapi_configured(user_uid=user_uid, max_articles=max_articles)
+        print(f"   {n} new articles\n")
+    if connectors:
+        print("-- All News Connectors --------------------------")
+        n = fetch_all_generic_news_connectors(user_uid=user_uid, max_articles=max_articles)
+        print(f"   {n} new articles\n")
+
+    elif newsapi_query:
         print(f"-- NewsAPI: '{newsapi_query}' -------------------")
         n = fetch_newsapi(newsapi_query, user_uid=user_uid, max_articles=max_articles)
         print(f"   {n} new articles\n")
@@ -858,10 +1137,13 @@ def main() -> None:
     parser.add_argument("--ap",           action="store_true",         help="Fetch AP News RSS (business + finance + technology)")
     parser.add_argument("--cnbc",         action="store_true",         help="Fetch CNBC RSS feeds")
     parser.add_argument("--marketwatch",  action="store_true",         help="Fetch MarketWatch RSS top stories")
-    parser.add_argument("--reuters",      action="store_true",         help="Fetch Reuters via NewsAPI (requires newsapi key)")
-    parser.add_argument("--newsapi",      metavar="QUERY",             help="Fetch NewsAPI.org results for a keyword query")
-    parser.add_argument("--gdelt",        nargs="+", metavar="KEYWORD", help="Fetch GDELT global event articles matching keywords")
-    parser.add_argument("--all",          action="store_true",         help="Run all free sources (podcasts + watchlist + PDFs + AP + CNBC + MarketWatch)")
+    parser.add_argument("--reuters",         action="store_true", help="Fetch Reuters via NewsAPI source filter (backwards compat)")
+    parser.add_argument("--newsapi",         metavar="QUERY",     help="One-off NewsAPI keyword query")
+    parser.add_argument("--newsapi-refresh", action="store_true", help="Sync NewsAPI publisher list → newsapi_sources table; seed default keywords")
+    parser.add_argument("--newsapi-all",     action="store_true", help="Run all DB-configured NewsAPI sources + keywords")
+    parser.add_argument("--connectors",      action="store_true", help="Run all news_connector role entries (TheNewsAPI, Finnhub, etc.)")
+    parser.add_argument("--gdelt",           nargs="+", metavar="KEYWORD", help="Fetch GDELT global event articles matching keywords")
+    parser.add_argument("--all",             action="store_true", help="Run all sources (free RSS + configured NewsAPI sources + keywords)")
     parser.add_argument("--classify",     action="store_true",         help="Run LLM classifier on unclassified news_articles rows → supply_chain_events")
     parser.add_argument("--limit",        type=int, default=50, metavar="N", help="--classify only: max articles to classify per run (default 50)")
     parser.add_argument("--episodes",     type=int, default=NEWS_MAX_EPISODES,  metavar="N", help=f"Max episodes per podcast source (default {NEWS_MAX_EPISODES})")
@@ -880,6 +1162,9 @@ def main() -> None:
         marketwatch=args.marketwatch,
         reuters=args.reuters,
         newsapi_query=args.newsapi,
+        newsapi_refresh=args.newsapi_refresh,
+        newsapi_all=args.newsapi_all,
+        connectors=args.connectors,
         gdelt_keywords=args.gdelt,
         all_sources=args.all,
         classify=args.classify,

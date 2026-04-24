@@ -22,6 +22,12 @@ models/
 src/News/audio/
 src/News/pdfs/
 
+# Accidental nested src/ directory
+src/src/
+
+# Filing text cache (downloaded from EDGAR — large, reproducible)
+src/filings/
+
 # Large binary wheels
 *.whl
 

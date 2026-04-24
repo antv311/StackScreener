@@ -35,10 +35,12 @@ _OVERLAY_MAX_BOOST: float = 20.0
 
 
 def _clamp(val: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    """Bounds a computed score to [lo, hi]; prevents overlay boosts from pushing composite above 100."""
     return max(lo, min(hi, val))
 
 
 def _score_pe(pe: float | None) -> float:
+    """Returns 50 (not 0) on missing data so an unknown P/E is neutral rather than a penalty."""
     if pe is None:
         return 50.0
     if pe <= 0:
@@ -47,6 +49,7 @@ def _score_pe(pe: float | None) -> float:
 
 
 def _score_ev_revenue(ev_r: float | None) -> float:
+    """Returns 50 (not 0) on missing data so absence of EV/R data is neutral rather than a penalty."""
     if ev_r is None:
         return 50.0
     if ev_r <= 0:
@@ -55,6 +58,7 @@ def _score_ev_revenue(ev_r: float | None) -> float:
 
 
 def _score_ev_ebitda(ev_e: float | None) -> float:
+    """Returns 50 (not 0) on missing data so absence of EV/EBITDA data is neutral rather than a penalty."""
     if ev_e is None:
         return 50.0
     if ev_e <= 0:
@@ -63,6 +67,7 @@ def _score_ev_ebitda(ev_e: float | None) -> float:
 
 
 def _score_profit_margin(margin: float | None) -> float:
+    """Returns 50 (not 0) on missing data so stocks without margin data aren't penalised relative to peers."""
     if margin is None:
         return 50.0
     span = MARGIN_MAX - MARGIN_MIN
@@ -70,6 +75,7 @@ def _score_profit_margin(margin: float | None) -> float:
 
 
 def _score_peg(peg: float | None) -> float:
+    """Returns 50 (not 0) on missing data; negative PEG (declining earnings) scores 0 same as an extreme value."""
     if peg is None:
         return 50.0
     if peg <= 0:
@@ -80,6 +86,7 @@ def _score_peg(peg: float | None) -> float:
 
 
 def _score_debt_equity(de: float | None) -> float:
+    """Returns 50 (not 0) on missing data; negative D/E (negative equity) scores 0, not a neutral."""
     if de is None:
         return 50.0
     if de < 0:
@@ -88,7 +95,7 @@ def _score_debt_equity(de: float | None) -> float:
 
 
 def _weighted_composite(components: dict[str, float]) -> float:
-    """Weighted average of 8 fundamental components + additive overlays."""
+    """Supply chain and inst flow are additive boosts on top of the fundamental base, so composite can transiently exceed 100 before _clamp."""
     weights: dict[str, float] = {
         "score_ev_revenue":    WEIGHT_EV_REVENUE,
         "score_pe":            WEIGHT_PE,

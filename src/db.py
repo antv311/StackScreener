@@ -35,6 +35,7 @@ def _build_upsert_sql(
     pk: str | None = None,
     refresh_timestamp: bool = False,
 ) -> tuple[str, tuple]:
+    """Generates INSERT OR REPLACE … ON CONFLICT DO UPDATE for every column except pk and conflict_keys."""
     cols = [c for c in data if c != pk]
     placeholders = ", ".join("?" * len(cols))
     col_names = ", ".join(cols)
@@ -58,6 +59,7 @@ def _build_insert_sql(table: str, data: dict, pk: str | None = None) -> tuple[st
 # ── Low-level helpers ──────────────────────────────────────────────────────────
 
 def execute(sql: str, params: tuple = ()) -> int:
+    """Returns lastrowid, not rowcount; lastrowid is 0 on the UPDATE path of an UPSERT."""
     with _connect() as conn:
         cur = conn.execute(sql, params)
         _debug(f"execute: {sql[:80]} | params={params}")
@@ -71,12 +73,14 @@ def executemany(sql: str, params_list: list[tuple]) -> None:
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:
+    """Always returns list[dict] — returns [] on no rows, never raises on empty result."""
     with _connect() as conn:
         _debug(f"query: {sql[:80]} | params={params}")
         return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
 
 def query_one(sql: str, params: tuple = ()) -> dict | None:
+    """Returns dict on hit, None on miss — never raises on no-match."""
     with _connect() as conn:
         _debug(f"query_one: {sql[:80]} | params={params}")
         row = conn.execute(sql, params).fetchone()
@@ -410,6 +414,27 @@ def init_db() -> None:
                 UNIQUE(source, url)
             );
 
+            CREATE TABLE IF NOT EXISTS newsapi_sources (
+                source_uid  INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid    INTEGER NOT NULL REFERENCES users(user_uid),
+                source_id   TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                category    TEXT,
+                country     TEXT,
+                language    TEXT,
+                enabled     INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(user_uid, source_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS newsapi_keywords (
+                keyword_uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid    INTEGER NOT NULL REFERENCES users(user_uid),
+                keyword     TEXT NOT NULL,
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(user_uid, keyword)
+            );
+
             CREATE TABLE IF NOT EXISTS llm_jobs (
                 job_uid      INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_type     TEXT NOT NULL,   -- 'classify_news' | 'extract_10k' | 'parse_8k'
@@ -436,6 +461,9 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     """
     migrations = [
         "ALTER TABLE api_keys ADD COLUMN url TEXT",
+        "ALTER TABLE api_keys ADD COLUMN display_name TEXT",
+        "ALTER TABLE api_keys ADD COLUMN connector_config TEXT",
+        "ALTER TABLE api_keys ADD COLUMN role TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN country_code TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN trade_route TEXT",
         "ALTER TABLE supply_chain_events ADD COLUMN commodity TEXT",
@@ -446,9 +474,18 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE stocks ADD COLUMN ev_revenue REAL",
         "ALTER TABLE stocks ADD COLUMN ev_ebitda REAL",
         "ALTER TABLE stocks ADD COLUMN company_name TEXT",
+        "ALTER TABLE stocks ADD COLUMN ex_dividend_date TEXT",
+        "ALTER TABLE stocks ADD COLUMN dividend_date TEXT",
+        "ALTER TABLE stocks ADD COLUMN last_dividend_value REAL",
         "ALTER TABLE news_articles ADD COLUMN llm_classified INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE source_signals ADD COLUMN signal_url TEXT",
         "ALTER TABLE source_signals ADD COLUMN notes TEXT",
+    ]
+    # One-time data corrections (idempotent — safe to re-run)
+    data_fixes = [
+        # yfinance sometimes returns dividendYield as a percentage (6.95) instead of
+        # decimal fraction (0.0695). Fix any stored values > 1.0 by dividing by 100.
+        "UPDATE stocks SET dividend_yield = dividend_yield / 100 WHERE dividend_yield > 1.0",
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS idx_stocks_delisted_enriched   ON stocks (delisted, last_enriched_at)",
@@ -471,6 +508,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
             conn.execute(sql)
         except sqlite3.OperationalError:
             pass
+    for sql in data_fixes:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
 
 
 # ── Watchlists ─────────────────────────────────────────────────────────────────
@@ -497,7 +540,7 @@ def get_all_watchlists() -> list[dict]:
 # ── Stocks ─────────────────────────────────────────────────────────────────────
 
 def upsert_stock(data: dict) -> int:
-    """Insert or update a stock keyed on (ticker, exchange). Returns stock_uid."""
+    """Idempotent by (ticker, exchange); existing columns not in data are preserved via DO UPDATE SET excluded.*."""
     sql, params = _build_upsert_sql("stocks", data, ("ticker", "exchange"), pk="stock_uid")
     return execute(sql, params)
 
@@ -557,8 +600,16 @@ def get_active_stocks() -> list[dict]:
     return query("SELECT * FROM stocks WHERE delisted = 0 ORDER BY ticker")
 
 
+def reset_enrichment_staleness(skip_delisted: bool = True) -> int:
+    """Sets last_enriched_at = NULL so every stock re-qualifies; called by enricher --force before fetching pending list."""
+    sql = "UPDATE stocks SET last_enriched_at = NULL"
+    if skip_delisted:
+        sql += " WHERE delisted = 0"
+    return execute(sql)
+
+
 def get_pending_enrichment(limit: int | None = None, skip_delisted: bool = True) -> list[dict]:
-    """Return stocks needing enrichment: never enriched or stale."""
+    """NULLS FIRST ordering ensures never-enriched stocks are processed before merely stale ones."""
     sql = """
         SELECT stock_uid, ticker, exchange FROM stocks
         WHERE (last_enriched_at IS NULL
@@ -575,7 +626,7 @@ def get_pending_enrichment(limit: int | None = None, skip_delisted: bool = True)
 
 
 def get_pending_history(limit: int | None = None, skip_delisted: bool = True) -> list[dict]:
-    """Return stocks whose price history is missing or stale."""
+    """Filters price > 0 so pre-IPO stubs seeded with price=0.0 are never queued for history."""
     sql = """
         SELECT s.stock_uid, s.ticker, s.exchange
         FROM stocks s
@@ -737,14 +788,22 @@ def get_scan_results(scan_uid: int, limit: int | None = None) -> list[dict]:
 # ── Supply Chain Events ────────────────────────────────────────────────────────
 
 def upsert_supply_chain_event(data: dict) -> int:
-    """Insert or update an event keyed on (title, region). Returns supply_chain_event_uid."""
+    """Falls back to a SELECT when lastrowid==0 because Python's sqlite3 returns 0 on the UPSERT update path."""
     sql, params = _build_upsert_sql(
         "supply_chain_events", data,
         ("title", "region"),
         pk="supply_chain_event_uid",
         refresh_timestamp=True,
     )
-    return execute(sql, params)
+    uid = execute(sql, params)
+    if not uid:
+        # ON CONFLICT DO UPDATE path — Python's lastrowid is 0; fetch the real PK.
+        row = query_one(
+            "SELECT supply_chain_event_uid FROM supply_chain_events WHERE title = ? AND region = ?",
+            (data["title"], data["region"]),
+        )
+        uid = row["supply_chain_event_uid"] if row else 0
+    return uid
 
 
 def get_active_events() -> list[dict]:
@@ -847,12 +906,45 @@ def upsert_calendar_event(data: dict) -> int:
     return execute(sql, params)
 
 
+def sync_dividend_calendar_events() -> int:
+    """Idempotent mirror of stocks.ex_dividend_date/dividend_date into calendar_events; safe to call on every CalendarTab mount."""
+    rows = query(
+        "SELECT stock_uid, ticker, company_name, ex_dividend_date, dividend_date, last_dividend_value "
+        "FROM stocks WHERE delisted = 0 "
+        "AND (ex_dividend_date IS NOT NULL OR dividend_date IS NOT NULL)"
+    )
+    count = 0
+    for s in rows:
+        div_str = f" (${s['last_dividend_value']:.4f}/sh)" if s.get("last_dividend_value") else ""
+        ticker  = s.get("ticker") or ""
+        name    = s.get("company_name") or ticker
+        if s.get("ex_dividend_date"):
+            upsert_calendar_event({
+                "stock_uid":  s["stock_uid"],
+                "event_type": "ex_dividend",
+                "event_date": s["ex_dividend_date"],
+                "title":      f"{ticker} Ex-Div{div_str}",
+                "detail":     f"Ex-dividend date — {name}",
+            })
+            count += 1
+        if s.get("dividend_date"):
+            upsert_calendar_event({
+                "stock_uid":  s["stock_uid"],
+                "event_type": "dividend_pay",
+                "event_date": s["dividend_date"],
+                "title":      f"{ticker} Div Pay{div_str}",
+                "detail":     f"Dividend payment — {name}",
+            })
+            count += 1
+    return count
+
+
 def get_calendar_events_with_ticker(
     start_date: str,
     end_date: str,
-    event_type: str | None = None,
+    event_type: str | list[str] | None = None,
 ) -> list[dict]:
-    """Return calendar events joined with ticker and company name."""
+    """event_type accepts a list to generate an IN clause, a bare str for equality, or None for all — backward compatible."""
     sql = """
         SELECT ce.*, s.ticker, s.company_name
         FROM calendar_events ce
@@ -860,7 +952,11 @@ def get_calendar_events_with_ticker(
         WHERE ce.event_date BETWEEN ? AND ?
     """
     params: tuple = (start_date, end_date)
-    if event_type is not None:
+    if isinstance(event_type, list):
+        placeholders = ", ".join("?" * len(event_type))
+        sql += f" AND ce.event_type IN ({placeholders})"
+        params += tuple(event_type)
+    elif event_type is not None:
         sql += " AND ce.event_type = ?"
         params += (event_type,)
     return query(sql + " ORDER BY ce.event_date", params)
@@ -990,18 +1086,50 @@ def seed_default_user() -> None:
 
 # ── API Keys ───────────────────────────────────────────────────────────────────
 
-def set_api_key(user_uid: int, name: str, plaintext_key: str, url: str | None = None) -> None:
-    """Encrypt and store (or update) an API key."""
-    encrypted = crypto.encrypt(plaintext_key)
+def set_api_key(
+    user_uid: int,
+    name: str,
+    plaintext_key: str,
+    url: str | None = None,
+    display_name: str | None = None,
+    role: str | None = None,
+) -> None:
+    """Encrypt and store (or update) an API key.
+
+    `name`  — unique human label (e.g. "TheNewsAPI Free", "aisstream").
+    `role`  — functional category for multi-provider lookup (e.g. "news_connector").
+              Defaults to name when omitted (preserves existing 1:1 system key behaviour).
+    """
+    encrypted   = crypto.encrypt(plaintext_key)
+    stored_role = role if role is not None else name
     execute(
-        """INSERT INTO api_keys (user_uid, name, api_key, url)
-           VALUES (?, ?, ?, ?)
+        """INSERT INTO api_keys (user_uid, name, api_key, url, display_name, role)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_uid, name) DO UPDATE SET
-               api_key = excluded.api_key,
-               url     = excluded.url,
-               updated_at = datetime('now')""",
-        (user_uid, name, encrypted, url),
+               api_key      = excluded.api_key,
+               url          = excluded.url,
+               display_name = COALESCE(excluded.display_name, display_name),
+               role         = COALESCE(excluded.role, role),
+               updated_at   = datetime('now')""",
+        (user_uid, name, encrypted, url, display_name, stored_role),
     )
+
+
+def get_api_keys_by_role(user_uid: int, role: str) -> list[dict]:
+    """Return all api_keys rows for a given role (decrypted key included)."""
+    rows = query(
+        "SELECT * FROM api_keys WHERE user_uid = ? AND role = ? ORDER BY name",
+        (user_uid, role),
+    )
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["api_key_plain"] = crypto.decrypt(d["api_key"]) if d.get("api_key") else None
+        except Exception:
+            d["api_key_plain"] = None
+        result.append(d)
+    return result
 
 
 def get_api_key(user_uid: int, name: str) -> str | None:
@@ -1023,6 +1151,93 @@ def list_api_keys(user_uid: int) -> list[str]:
 
 def delete_api_key(user_uid: int, name: str) -> None:
     execute("DELETE FROM api_keys WHERE user_uid = ? AND name = ?", (user_uid, name))
+
+
+def set_connector_config(user_uid: int, name: str, config_json: str) -> None:
+    """Store or update the connector config JSON for an api_keys row."""
+    execute(
+        "UPDATE api_keys SET connector_config = ? WHERE user_uid = ? AND name = ?",
+        (config_json, user_uid, name),
+    )
+
+
+def get_connector_config(user_uid: int, name: str) -> dict | None:
+    """Return the parsed connector config dict from api_keys, or None if not configured."""
+    import json as _json
+    row = query_one(
+        "SELECT connector_config FROM api_keys WHERE user_uid = ? AND name = ?",
+        (user_uid, name),
+    )
+    if row is None or not row["connector_config"]:
+        return None
+    try:
+        return _json.loads(row["connector_config"])
+    except Exception:
+        return None
+
+
+# ── NewsAPI source and keyword configuration ────────────────────────────────────
+
+def upsert_newsapi_sources(user_uid: int, sources: list[dict]) -> int:
+    """Upsert a batch of source dicts from the /v2/sources API response. Returns count."""
+    for s in sources:
+        execute(
+            """INSERT INTO newsapi_sources (user_uid, source_id, name, category, country, language)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_uid, source_id) DO UPDATE SET
+                   name     = excluded.name,
+                   category = excluded.category,
+                   country  = excluded.country,
+                   language = excluded.language""",
+            (user_uid, s["id"], s["name"], s.get("category"), s.get("country"), s.get("language")),
+        )
+    return len(sources)
+
+
+def get_newsapi_sources(user_uid: int, enabled_only: bool = False) -> list[dict]:
+    sql    = "SELECT * FROM newsapi_sources WHERE user_uid = ?"
+    params: tuple = (user_uid,)
+    if enabled_only:
+        sql += " AND enabled = 1"
+    sql += " ORDER BY category, name"
+    return query(sql, params)
+
+
+def toggle_newsapi_source(user_uid: int, source_id: str, enabled: bool) -> None:
+    execute(
+        "UPDATE newsapi_sources SET enabled = ? WHERE user_uid = ? AND source_id = ?",
+        (1 if enabled else 0, user_uid, source_id),
+    )
+
+
+def get_newsapi_keywords(user_uid: int) -> list[dict]:
+    return query(
+        "SELECT * FROM newsapi_keywords WHERE user_uid = ? ORDER BY created_at",
+        (user_uid,),
+    )
+
+
+def add_newsapi_keyword(user_uid: int, keyword: str) -> int:
+    return execute(
+        """INSERT INTO newsapi_keywords (user_uid, keyword)
+           VALUES (?, ?)
+           ON CONFLICT(user_uid, keyword) DO UPDATE SET enabled = 1""",
+        (user_uid, keyword.strip()),
+    )
+
+
+def delete_newsapi_keyword(user_uid: int, keyword_uid: int) -> None:
+    execute(
+        "DELETE FROM newsapi_keywords WHERE keyword_uid = ? AND user_uid = ?",
+        (keyword_uid, user_uid),
+    )
+
+
+def toggle_newsapi_keyword(user_uid: int, keyword_uid: int, enabled: bool) -> None:
+    execute(
+        "UPDATE newsapi_keywords SET enabled = ? WHERE keyword_uid = ? AND user_uid = ?",
+        (1 if enabled else 0, keyword_uid, user_uid),
+    )
 
 
 # ── Portfolio ──────────────────────────────────────────────────────────────────
@@ -1268,6 +1483,7 @@ def enqueue_llm_job(
 
 
 def dequeue_next_llm_job() -> dict | None:
+    """Atomic UPDATE→SELECT prevents two workers from claiming the same job on concurrent calls."""
     with _connect() as conn:
         conn.execute("""
             UPDATE llm_jobs
@@ -1293,6 +1509,7 @@ def complete_llm_job(job_uid: int, result_json: str) -> None:
 
 
 def fail_llm_job(job_uid: int, error_text: str, max_retries: int = 3) -> None:
+    """Increments retries and re-queues as 'pending' until max_retries is reached, then promotes to 'failed'."""
     with _connect() as conn:
         row = conn.execute(
             "SELECT retries FROM llm_jobs WHERE job_uid = ?", (job_uid,)
@@ -1316,10 +1533,58 @@ def get_llm_queue_stats() -> dict:
 def get_llm_jobs(status: str | None = None, limit: int = 50) -> list[dict]:
     if status is not None:
         return query(
-            "SELECT * FROM llm_jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM llm_jobs WHERE status = ? ORDER BY priority ASC, created_at ASC LIMIT ?",
             (status, limit),
         )
-    return query("SELECT * FROM llm_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+    return query("SELECT * FROM llm_jobs ORDER BY priority ASC, created_at ASC LIMIT ?", (limit,))
+
+
+def get_distinct_job_types() -> list[str]:
+    """Return all job_type values that currently have queued (pending/paused) jobs."""
+    rows = query(
+        "SELECT DISTINCT job_type FROM llm_jobs WHERE status IN ('pending','paused','running') ORDER BY job_type"
+    )
+    return [r["job_type"] for r in rows]
+
+
+def pause_llm_jobs(job_type: str | None = None) -> int:
+    """Moves pending→paused; the LLM worker skips paused jobs so work halts without losing queue position."""
+    if job_type:
+        return execute(
+            "UPDATE llm_jobs SET status = 'paused' WHERE status = 'pending' AND job_type = ?",
+            (job_type,),
+        )
+    return execute("UPDATE llm_jobs SET status = 'paused' WHERE status = 'pending'")
+
+
+def resume_llm_jobs(job_type: str | None = None) -> int:
+    """Move paused → pending. Returns affected row count."""
+    if job_type:
+        return execute(
+            "UPDATE llm_jobs SET status = 'pending' WHERE status = 'paused' AND job_type = ?",
+            (job_type,),
+        )
+    return execute("UPDATE llm_jobs SET status = 'pending' WHERE status = 'paused'")
+
+
+def cancel_llm_jobs(job_type: str | None = None) -> int:
+    """Moves pending/paused→cancelled; irreversible — cancelled jobs are never retried or resumed."""
+    if job_type:
+        return execute(
+            "UPDATE llm_jobs SET status = 'cancelled' WHERE status IN ('pending','paused') AND job_type = ?",
+            (job_type,),
+        )
+    return execute(
+        "UPDATE llm_jobs SET status = 'cancelled' WHERE status IN ('pending','paused')"
+    )
+
+
+def set_job_priority(job_type: str, priority: int) -> int:
+    """Bulk-set priority for all pending/paused jobs of a given type (1=highest, 9=lowest)."""
+    return execute(
+        "UPDATE llm_jobs SET priority = ? WHERE status IN ('pending','paused') AND job_type = ?",
+        (max(1, min(9, priority)), job_type),
+    )
 
 
 # ── DB Browser (db_app.py) ─────────────────────────────────────────────────────
@@ -1377,3 +1642,17 @@ def get_news_article_urls(source: str) -> set[str]:
         (source,),
     )
     return {r["url"] for r in rows}
+
+
+def get_active_stock_count() -> int:
+    """Return count of non-delisted stocks."""
+    row = query_one("SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0")
+    return row["n"] if row else 0
+
+
+def get_enriched_stock_count() -> int:
+    """Return count of non-delisted stocks that have been enriched at least once."""
+    row = query_one(
+        "SELECT COUNT(*) AS n FROM stocks WHERE delisted = 0 AND last_enriched_at IS NOT NULL"
+    )
+    return row["n"] if row else 0

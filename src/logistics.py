@@ -22,16 +22,15 @@ import argparse
 import asyncio
 import json
 import re
-import sys
 import time
 from datetime import datetime
 
 import requests
 
-sys.path.insert(0, __file__.replace("logistics.py", ""))
 import db
 from screener_config import (
     DEBUG_MODE,
+    LOGISTICS_USER_AGENT,
     EDGAR_RATE_LIMIT,
     AIS_API_BASE, AIS_API_KEY_NAME, AIS_SAMPLE_SECONDS,
     CHOKEPOINT_BASELINE_DAYS, CHOKEPOINT_LOW_THRESHOLD,
@@ -44,7 +43,7 @@ from screener_config import (
     CHOKEPOINTS,
 )
 
-_HEADERS = {"User-Agent": "StackScreener/1.0 logistics@stackscreener.local"}
+_HEADERS = {"User-Agent": LOGISTICS_USER_AGENT}
 
 # Sectors impacted by chokepoint congestion — shipping + exposed industries
 _CHOKEPOINT_SECTORS = ["Industrials", "Energy", "Materials", "Consumer Staples", "Technology"]
@@ -184,7 +183,7 @@ def _get_baseline_count(chokepoint_name: str) -> float:
     """Return rolling average vessel count from stored source_signals for this chokepoint."""
     url_prefix = f"ais://{chokepoint_name.lower().replace(' ', '_')}/"
     rows = db.query(
-        "SELECT notes FROM source_signals "
+        "SELECT reason_text FROM source_signals "
         "WHERE source = ? AND signal_url LIKE ? "
         "ORDER BY fetched_at DESC LIMIT ?",
         (PROVIDER_AIS, url_prefix + "%", CHOKEPOINT_BASELINE_DAYS),
