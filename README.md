@@ -87,13 +87,14 @@ Default login: **admin / admin** (forced password change on first launch).
 
 ### Data Scraper TUI — `python src/scraper_app.py`
 
-P1 pipeline control panel. Left sidebar has one button per data source. Right panel has three tabs:
+P1 pipeline control panel. Left sidebar has one button per data source. Right panel has four tabs:
 
 | Tab | What's Here |
 |---|---|
 | **Logs** | Live stdout/stderr stream from the last triggered command |
-| **Queue** | LLM job queue — pending/running/done/failed/paused/cancelled counts + job list; Pause/Resume/Cancel/Priority controls by job type; auto-refreshes every 5s |
+| **Queue** | LLM job queue — pending/running/done/failed/paused/cancelled counts + job list; Pause/Resume/Cancel/Priority controls by job type; auto-refreshes every 15s |
 | **Sources** | API key manager — press Enter on any row to open EndpointModal (add/edit key, url, display name, role) |
+| **Schedule** | Pipeline scheduler — add any of the 21 commands with a recurring interval (hours); persisted to `scheduled_jobs` DB table; fires automatically every 60s |
 
 **LLM Worker toggle** — Start/Stop button that runs `llm.py --worker` as a background subprocess,
 draining the job queue one job at a time (prevents VRAM deadlock from parallel LLM calls).
@@ -123,6 +124,7 @@ Pipeline buttons (each triggers the corresponding CLI command):
 | AIS Chokepoints | `logistics.py --chokepoints` |
 | Panama Canal | `logistics.py --panama` |
 | Supply Chain Seed | `supply_chain.py --seed-tier2` |
+| WSJ Newspaper | `wsj_fetcher.py` |
 
 **Setting API keys via Sources tab:** run `scraper_app.py`, click Sources tab, press Enter on
 the provider row, fill in key and optional URL / display name.
@@ -306,7 +308,7 @@ python -c "import sys; sys.path.insert(0,'src'); import db; db.init_db(); db.set
 
 | Component | Status |
 |---|---|
-| Shared core — DB (19 tables, 9 indexes), scoring engine, scan runner | ✅ Complete |
+| Shared core — DB (20 tables, 10 indexes), scoring engine, scan runner | ✅ Complete |
 | P1 — Enricher, EDGAR, news, supply chain, congressional trades | ✅ Complete |
 | P1 — LLM extraction pipeline — 3/3 tasks validated on Qwen2.5-7B TurboQuant 4-bit | ✅ Complete |
 | P1 — LLM job queue (SQLite-backed, serialised worker, Pause/Resume/Cancel/Priority controls) | ✅ Complete |
@@ -321,7 +323,7 @@ python -c "import sys; sys.path.insert(0,'src'); import db; db.init_db(); db.set
 | P1 — AIS chokepoint monitoring + Panama Canal draft (midstream logistics) | ✅ Complete |
 | P1 — Dividend data fix: _norm_yield() + ex_dividend_date/dividend_date/last_dividend_value cols | ✅ Complete |
 | P1 — wsj_fetcher.py — automated WSJ PDF downloader via Gmail + Chrome | ✅ Complete |
-| P1 — Data Scraper TUI (scraper_app.py) — 20 pipeline buttons, log tail, queue controls, sources | ✅ Complete |
+| P1 — Data Scraper TUI (scraper_app.py) — 21 pipeline buttons, log tail, queue controls, sources, schedule | ✅ Complete |
 | P2 — Database TUI (db_app.py) — table browser, SQL shell, DB stats | ✅ Complete |
 | P3 — Screener, Calendar, Comparison, Picks, Reports, News tabs | ✅ Complete |
 | P3 — Calendar dividend events (ex_dividend, dividend_pay) + Dividends filter button | ✅ Complete |
@@ -341,7 +343,7 @@ StackScreener/
 ├── src/
 │   ├── — Shared Core —
 │   ├── screener_config.py      ← all constants, weights, thresholds
-│   ├── db.py                   ← SQLite layer (19 tables, 9 indexes)
+│   ├── db.py                   ← SQLite layer (20 tables, 10 indexes)
 │   ├── crypto.py               ← Fernet encryption + password hashing
 │   ├── seeder.py               ← DB init + NYSE/NASDAQ universe fetch
 │   ├── screener.py             ← scoring engine
@@ -382,7 +384,7 @@ StackScreener/
 |---|---|
 | Language | Python 3.14.2 |
 | Data | yfinance, yahooquery, openai-whisper, pypdf |
-| Database | SQLite — 19 tables, 9 indexes, all access via `db.py` |
+| Database | SQLite — 20 tables, 10 indexes, all access via `db.py` |
 | Encryption | cryptography (Fernet) + keyring (OS keyring) |
 | Terminal UI | Textual 8.x |
 | SEC EDGAR | requests (XBRL JSON API + archives, no key required) |

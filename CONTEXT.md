@@ -111,7 +111,7 @@ See `ROADMAP.md` for full per-project status and backlogs.
      │               Shared Core                  │
      │  db.py · screener_config.py                │
      │  crypto.py · screener.py · screener_run.py │
-     │  SQLite: 19 tables, 9 indexes              │
+     │  SQLite: 20 tables, 10 indexes              │
      └───────────────────┬────────────────────────┘
                          │
           ┌──────────────┴──────────────┐
@@ -172,7 +172,7 @@ StackScreener/
 ├── src/
 │   ├── — SHARED CORE —
 │   ├── screener_config.py          ← ALL constants, weights, thresholds, status values, DEBUG_MODE
-│   ├── db.py                       ← SQLite layer — ALL DB access goes here only (19 tables, 9 indexes)
+│   ├── db.py                       ← SQLite layer — ALL DB access goes here only (20 tables, 10 indexes)
 │   ├── crypto.py                   ← Fernet encryption (OS keyring) + password hashing
 │   ├── seeder.py                   ← one-time schema init + NYSE/NASDAQ universe fetch
 │   ├── screener.py                 ← core scoring engine (8 components + SC/flow overlays)
@@ -187,7 +187,7 @@ StackScreener/
 │   ├── commodities.py              ← USDA crop conditions + EIA petroleum → upstream commodity signals
 │   ├── logistics.py                ← AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals
 │   ├── wsj_fetcher.py              ← automated WSJ PDF downloader: Gmail IMAP + Chrome profile → src/News/pdfs/
-│   ├── scraper_app.py              ← Data Scraper TUI — 20 pipeline buttons, log tail, Queue tab, Sources tab
+│   ├── scraper_app.py              ← Data Scraper TUI — 21 pipeline buttons (incl. WSJ), log tail, Queue tab, Sources tab, Schedule tab
 │   ├── — P2: DATABASE & SERVER —
 │   ├── db_app.py                   ← Database & Server TUI — table browser, SQL shell, DB stats
 │   ├── — P3: BLOOMBERG TUI —
@@ -210,7 +210,7 @@ StackScreener/
 ├── CONTEXT.md                      ← this file
 ├── CLAUDE.md                       ← coding conventions for Claude Code
 ├── ROADMAP.md                      ← 4-project roadmap with per-project backlogs
-├── DATABASE.md                     ← full schema map (all 19 tables, FKs, query patterns)
+├── DATABASE.md                     ← full schema map (all 20 tables, FKs, query patterns)
 ├── tree.md                         ← annotated file tree with entry points
 ├── requirements.txt
 └── README.md

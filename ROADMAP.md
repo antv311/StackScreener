@@ -24,7 +24,7 @@ without touching the others.
         │  db.py · screener_config.py        │
         │  crypto.py · screener.py           │
         │  screener_run.py                   │
-        │  SQLite: 19 tables, 9 indexes      │
+        │  SQLite: 20 tables, 10 indexes      │
         └─────────────┬──────────────────────┘
                       │
         ┌─────────────┴──────────────────────┐
@@ -48,7 +48,7 @@ The foundation all four projects depend on.
 
 - [x] Python 3.14.2 venv, C extensions compiled, all deps installed
 - [x] `screener_config.py` — all constants, weights, thresholds, status strings
-- [x] `db.py` — SQLite layer: 19 tables, 9 covering indexes, CRUD helpers, batch ops
+- [x] `db.py` — SQLite layer: 20 tables, 10 covering indexes, CRUD helpers, batch ops
 - [x] `crypto.py` — Fernet encryption (OS keyring) + PBKDF2 password hashing
 - [x] `seeder.py` — schema init, admin user, NYSE/NASDAQ universe (7,001 stocks)
 - [x] `enricher.py` — rate-limited fundamentals worker + IPO calendar + 5y price history
@@ -92,8 +92,10 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `edgar.py` — local filing cache (`src/filings/10k/` + `src/filings/8k/`) | ✅ Complete |
 | `commodities.py` — USDA crop conditions + EIA petroleum inventory signals | ✅ Complete |
 | `logistics.py` — AIS chokepoints (10 routes) + Panama Canal draft restriction | ✅ Complete |
-| `scraper_app.py` — Data Scraper TUI (20 pipeline buttons, log tail, queue tab, sources tab) | ✅ Complete |
+| `scraper_app.py` — Data Scraper TUI (21 pipeline buttons incl. WSJ, log tail, queue tab, sources tab, schedule tab) | ✅ Complete |
 | LLM job queue controls — pause/resume/cancel/priority in db.py | ✅ Complete |
+| `scraper_app.py` — Schedule tab with `scheduled_jobs` table, ScheduleModal, 60s background check | ✅ Complete |
+| Tier 1 refactoring — User-Agent centralization, config dict consolidation, SQL helpers, sys.path cleanup | ✅ Complete |
 
 ---
 
@@ -237,7 +239,7 @@ today.
 
 | Component | Status |
 |---|---|
-| SQLite layer — 19 tables, 9 indexes, all helpers | ✅ Complete |
+| SQLite layer — 20 tables, 10 indexes, all helpers | ✅ Complete |
 | LLM job queue helpers (`enqueue`, `dequeue`, `complete`, `fail`, `pause`, `cancel`, `stats`) | ✅ Complete |
 | Job controls (`pause_llm_jobs`, `resume_llm_jobs`, `cancel_llm_jobs`, `set_job_priority`) | ✅ Complete |
 | DB browser helpers (`get_table_names`, `browse_table`, `execute_raw_sql`) | ✅ Complete |

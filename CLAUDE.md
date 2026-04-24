@@ -66,7 +66,7 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | File | Project | Owns |
 |---|---|---|
 | `screener_config.py` | Shared | ALL constants, weights, thresholds, status strings, `DEBUG_MODE` |
-| `db.py` | Shared | All SQLite reads/writes — no other file touches the DB (19 tables) |
+| `db.py` | Shared | All SQLite reads/writes — no other file touches the DB (20 tables) |
 | `crypto.py` | Shared | Fernet encryption + OS keyring key management + password hashing |
 | `seeder.py` | Shared | One-time schema init, default user seed, NYSE/NASDAQ universe fetch |
 | `screener.py` | Shared | Core scoring logic only — no hardcoded magic numbers |
@@ -80,7 +80,7 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `commodities.py` | P1 | USDA crop conditions + EIA petroleum → upstream commodity signals |
 | `logistics.py` | P1 | AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals |
 | `wsj_fetcher.py` | P1 | Automated WSJ PDF download via Gmail IMAP + Chrome automation |
-| `scraper_app.py` | P1 | Data Scraper TUI — 20 pipeline buttons, log tail, Queue tab, Sources tab |
+| `scraper_app.py` | P1 | Data Scraper TUI — 21 pipeline buttons (incl. WSJ), log tail, Queue tab, Sources tab, Schedule tab |
 | `db_app.py` | P2 | Database & Server TUI — SQL shell, table browser, API server controls |
 | `app.py` | P3 | Bloomberg TUI (Textual) — UI only, no business logic |
 

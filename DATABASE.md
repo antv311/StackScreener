@@ -2,7 +2,7 @@
 
 All tables live in `stackscreener.db`. All access goes through `db.py` only.
 Schema is created by `db.init_db()`. Migrations (new columns) run automatically on startup.
-**19 tables total. 9 covering indexes.**
+**20 tables total. 10 covering indexes.**
 
 ---
 
@@ -37,10 +37,11 @@ supply_chain_events
  └── research_reports        (supply_chain_event_uid → supply_chain_events)
 
 newsapi_sources              (no FK deps — catalog table)
+scheduled_jobs               (no FK deps — standalone scheduler)
 ```
 
 **Creation order** (respects FK deps):
-`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports → price_history → edgar_facts → settings → news_articles → llm_jobs → newsapi_keywords → newsapi_sources`
+`users → watchlists → stocks → api_keys → portfolio → scans → scan_results → supply_chain_events → event_stocks → calendar_events → source_signals → research_reports → price_history → edgar_facts → settings → news_articles → llm_jobs → newsapi_keywords → newsapi_sources → scheduled_jobs`
 
 ---
 
@@ -531,6 +532,23 @@ the Sources tab dropdown and allow per-source filtering in `news.py`.
 | `country` | TEXT | ISO 3166-1 alpha-2 |
 | `language` | TEXT | ISO 639-1 code |
 | `enabled` | INTEGER | 1 = active; 0 = disabled (default 0) |
+
+---
+
+### scheduled_jobs
+Persistent pipeline scheduler. Each row is a recurring job that fires automatically
+when `interval_hours` have elapsed since `last_run_at`. Managed from the Schedule tab
+in `scraper_app.py`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `schedule_uid` | INTEGER PK | |
+| `label` | TEXT | human label matching `_COMMANDS` button label |
+| `command_key` | TEXT | argv[1] fragment used as stable lookup key |
+| `interval_hours` | REAL | fire again after this many hours (default 24) |
+| `enabled` | INTEGER | 1 = active; 0 = paused |
+| `last_run_at` | TEXT | ISO datetime of last execution; NULL = never run |
+| `created_at` | TEXT | DEFAULT datetime('now') |
 
 ---
 

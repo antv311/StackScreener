@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-24 (milestone 8)
+> Last updated: 2026-04-24 (milestone 9)
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -11,7 +11,12 @@ diagnosing, or queued to build next. Update the date at the top whenever this fi
 
 | Item | Files Changed | Notes |
 |---|---|---|
-| `scraper_app.py` — full scheduler, 20 pipeline buttons | scraper_app.py | Was [PLANNED]; now ✅ Live. Seed Stock Universe, Force Re-enrich All, Fetch Price History, all 20 P1 pipeline buttons |
+| **Memory & efficiency fixes** | scraper_app.py, app.py, db_app.py, news.py | Orphaned Collapsible cleanup, N+1 batch query, 2000-row load cap, 15s poll interval, TTL-cached ticker frozenset, column-width 100-row cap |
+| **Tier 1 refactoring — all 6 tasks** | screener_config.py, app.py, news.py, screener_run.py, edgar.py, inst_flow.py, commodities.py, logistics.py, db.py | User-Agent centralization; SC_CONFIDENCE_MULT to config; legacy podcast constants removed; 6 UI config dicts moved to screener_config; sys.path hacks removed; HomePanel raw SQL → db helpers |
+| **`scraper_app.py` — Schedule tab** | scraper_app.py, db.py | New `scheduled_jobs` table (20th); ScheduleModal; 60s background check fires due jobs; Add/Toggle/Delete controls |
+| **`scraper_app.py` — WSJ Newspaper button** | scraper_app.py | 21st pipeline button — runs wsj_fetcher.py from the TUI |
+| **`refactor.md`** | refactor.md | Full 4-tier refactoring roadmap (Tier 2-4 still pending) |
+| `scraper_app.py` — full scheduler, 21 pipeline buttons | scraper_app.py | Was [PLANNED]; now ✅ Live. Seed Stock Universe, Force Re-enrich All, Fetch Price History, all 21 P1 pipeline buttons |
 | `scraper_app.py` — Queue tab with Pause/Resume/Cancel/Priority | scraper_app.py, db.py | Job controls: pause_llm_jobs, resume_llm_jobs, cancel_llm_jobs, set_job_priority, get_distinct_job_types |
 | `scraper_app.py` — Sources tab with unified EndpointModal | scraper_app.py | Single modal for add/edit; api_keys.display_name, url, connector_config, role columns |
 | `db_app.py` — table browser, SQL shell, DB stats | db_app.py | Was [PLANNED]; now ✅ Live |
@@ -77,6 +82,9 @@ strike, industrial REIT capacity shock). Tier 2 total: 9 events.
 - [ ] **Entity resolution** — wire LLM-extracted supplier names from `llm_10k_entities` facts
   into `event_stocks` auto-linkage (see Gap 3 above)
 - [x] **sql_tables/ missing files** — `llm_jobs.sql`, `newsapi_keywords.sql`, `newsapi_sources.sql`, `settings.sql` created ✅
+- [x] **Schedule tab in Scraper TUI** — `scheduled_jobs` table, ScheduleModal, 60s background check, Add/Toggle/Delete ✅
+- [x] **WSJ Newspaper pipeline button** — 21st button in Scraper TUI sidebar ✅
+- [x] **`scheduled_jobs.sql`** — canonical sql_tables entry created ✅
 
 ---
 

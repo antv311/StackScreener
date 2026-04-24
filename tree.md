@@ -6,7 +6,7 @@ StackScreener/
 │   │
 │   │  ── SHARED CORE ──────────────────────────────────────────────────────────
 │   ├── screener_config.py                ← ALL constants, weights, thresholds, status strings, DEBUG_MODE
-│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (19 tables, 9 indexes)
+│   ├── db.py                             ← SQLite layer — ALL DB access goes here only (20 tables, 10 indexes)
 │   ├── crypto.py                         ← Fernet encryption (OS keyring) + PBKDF2 password hashing
 │   ├── seeder.py                         ← one-time schema init + default admin user + NYSE/NASDAQ universe fetch
 │   ├── screener.py                       ← core scoring engine (EV/R, PE, EV/EBITDA, PEG, D/E, margin, SC, flow)
@@ -22,7 +22,7 @@ StackScreener/
 │   ├── commodities.py                    ← upstream commodity signals: USDA crop conditions + EIA petroleum inventory
 │   ├── logistics.py                      ← midstream vessel signals: AIS chokepoints (aisstream.io) + Panama Canal draft
 │   ├── wsj_fetcher.py                    ← automated WSJ PDF downloader: Gmail IMAP check + Chrome profile download → src/News/pdfs/ → news.py ingest
-│   ├── scraper_app.py                    ← Data Scraper TUI — 20 pipeline buttons, live log tail, Queue tab, Sources tab
+│   ├── scraper_app.py                    ← Data Scraper TUI — 21 pipeline buttons (incl. WSJ), live log tail, Queue tab, Sources tab, Schedule tab
 │   │
 │   │  ── PROJECT 2: DATABASE & SERVER ─────────────────────────────────────
 │   ├── db_app.py                         ← Database & Server TUI — table browser, SQL shell, DB stats
@@ -58,7 +58,8 @@ StackScreener/
 │   ├── llm_jobs.sql                      ← LLM job queue — pending/running/done/failed/paused/cancelled
 │   ├── newsapi_keywords.sql              ← per-user NewsAPI keyword list
 │   ├── newsapi_sources.sql               ← NewsAPI source catalog (user-scoped)
-│   └── settings.sql                      ← per-user key/value preferences
+│   ├── settings.sql                      ← per-user key/value preferences
+│   └── scheduled_jobs.sql                ← pipeline scheduler — recurring jobs with interval_hours + last_run_at
 │
 │  ── PROJECT 4: WEB SERVER & SITE ──────────────────────────────────────────
 ├── StackScreenerCD/                      ← React/JSX web prototype (reference UI for P4)
@@ -89,7 +90,7 @@ StackScreener/
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
 ├── ROADMAP.md                            ← 4-project roadmap with per-project status + backlogs
-├── DATABASE.md                           ← full schema map (all 19 tables, FKs, query patterns)
+├── DATABASE.md                           ← full schema map (all 20 tables, FKs, query patterns)
 ├── README.md                             ← GitHub landing page
 ├── tree.md                               ← this file
 ├── requirements.txt                      ← Python dependencies
@@ -122,6 +123,7 @@ Tables must be created in this order (FK dependencies):
 17. llm_jobs                    (no FK deps)
 18. newsapi_keywords            → users
 19. newsapi_sources             (no FK deps)
+20. scheduled_jobs              (no FK deps)
 ```
 
 ---
