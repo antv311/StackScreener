@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-24 (milestone 9)
+> Last updated: 2026-04-24 (milestone 10)
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -7,7 +7,20 @@ diagnosing, or queued to build next. Update the date at the top whenever this fi
 
 ---
 
-## What Was Completed This Milestone (2026-04-24)
+## What Was Completed This Milestone (2026-04-24, milestone 10)
+
+| Item | Files Changed | Notes |
+|---|---|---|
+| **FRED commodity pipeline** | commodities.py, screener_config.py, scraper_app.py | Expanded from 3 fertilizer series to 16-series registry: BLS PPI fertilizers, Henry Hub + EU natgas (daily aggregated), copper/aluminum/nickel/zinc/tin/iron ore, palm oil/cocoa/coffee/sugar, lumber. Per-category surge thresholds (15–25%). Fixed USDA endpoint `api_GET` + `year__GE` filter. |
+| **Supply chain Tier 2 seeds: 9 new** | supply_chain.py | EU natural gas cutoff, helium shortage, lithium supply shock, Indonesia nickel ban, China rare earth controls, Russia palladium sanctions, Congo cobalt disruption, Ukraine neon/krypton shortage, Australia/Brazil iron ore disruption |
+| **Supply chain Tier 2 seeds: 8 more** | supply_chain.py | Panama Canal drought, Russia titanium sanctions, China solar/UFLPA, East Coast ILA port strike, Black Sea grain disruption, Copper Chile/Peru, Rhine River low water, China graphite export controls |
+| **Total Tier 2: 27 events, 134 links** | supply_chain.py | Up from 9 events / 51 links. 0 unresolved tickers after universe re-seed. |
+| **Universe re-seed + delisted shells** | seeder.py (run), db (direct) | Full NYSE/NASDAQ re-seed (~7,010 stocks). X (US Steel, Nippon Steel acquisition) and DRE (Duke Realty, Prologis acquisition) inserted as delisted shells so seed links resolve. |
+| **WSJbot .gitignore fix** | C:\Users\tony\WSJbot\.gitignore | Replaced 963-line individual Chrome file listing with `chromeprofile/` wildcard — eliminated 2,294 perpetually untracked files. |
+
+---
+
+## What Was Completed Previous Milestone (2026-04-24, milestone 9)
 
 | Item | Files Changed | Notes |
 |---|---|---|
@@ -56,17 +69,18 @@ diagnosing, or queued to build next. Update the date at the top whenever this fi
 
 ---
 
-### Gap 4 — Consumer Staples / REIT Sector Depth (partially addressed)
+### Gap 4 — Supply Chain Sector Depth (substantially addressed)
 
-**Progress:** 3 new Tier 2 seeds added (consumer staples warehouse fire, West Coast port labor
-strike, industrial REIT capacity shock). Tier 2 total: 9 events.
+**Progress:** Tier 2 expanded from 9 → 27 events, 134 links. Covers: semiconductors, shipping,
+energy, agriculture, battery metals, base metals, industrial gases, fab gases, aerospace,
+solar, chemicals, REITs. All 134 company links resolved (0 skipped).
 
 **Still open:**
-- Mining/metals disruptions (copper, lithium) affecting semiconductors, EVs, defense — no
-  Tier 2 seeds, no automated detection
 - Port congestion data (LA/Long Beach, Rotterdam, Singapore) — no automated signal today;
-  AIS chokepoints cover routes but not individual port dwell times
-- Cross-sector chains (manufacturer → 3PL → warehouse REIT → retail vendor) are thin
+  AIS chokepoints cover sea routes but not individual port dwell times
+- Automated supply chain event detection — still manual seeding only; worldmonitor-osint or
+  news classifier → event promotion still pending (Gap 3 / entity resolution)
+- Cross-sector chains (manufacturer → 3PL → warehouse REIT → retail vendor) thin on automation
 
 ---
 

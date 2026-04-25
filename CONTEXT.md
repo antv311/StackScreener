@@ -145,6 +145,7 @@ NewsAPI.org (AP+Reuters+150k) → REST API, free tier (news.py — built; requir
 GDELT Project                 → global event database, free (news.py — built)
 USDA NASS crop conditions     → weekly G+E% per crop → crop_stress signals (commodities.py; requires free key)
 EIA petroleum inventory       → weekly crude/gasoline surprise (commodities.py; requires free key)
+FRED (St. Louis Fed)          → 16 commodity price series: BLS PPI fertilizers, Henry Hub natgas, EU natgas, copper/aluminum/nickel/zinc/tin/iron ore, palm oil/cocoa/coffee/sugar, lumber (commodities.py; requires free key)
 AIS maritime chokepoints      → aisstream.io WebSocket, 10 chokepoints (logistics.py; requires free key)
 Panama Canal Authority        → ACP draft restrictions scrape (logistics.py; public)
 Qwen2.5-7B validated 3/3 / 32B (prod) + TurboQuant 4-bit → LLM extraction (llm.py — built)
@@ -179,12 +180,12 @@ StackScreener/
 │   ├── screener_run.py             ← scan runner / CLI (nsr/thematic/watchlist + CSV)
 │   ├── — P1: DATA SCRAPER —
 │   ├── enricher.py                 ← background fundamentals worker + daily IPO calendar check + dividend normalization
-│   ├── supply_chain.py             ← Tier 2 curated seed (9 events, 51 links) + Tier 1 sector matching
+│   ├── supply_chain.py             ← Tier 2 curated seed (27 events, 134 links) + Tier 1 sector matching
 │   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + two-stage 10-K pipeline + 8-K material events
 │   ├── inst_flow.py                ← congressional trades + Form 4 insider trades + Form 13F + options flow
 │   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B); --worker --limit N
-│   ├── commodities.py              ← USDA crop conditions + EIA petroleum → upstream commodity signals
+│   ├── commodities.py              ← USDA crop conditions + EIA petroleum + FRED (16-series: fertilizers/natgas/metals/agri/lumber) → upstream commodity signals
 │   ├── logistics.py                ← AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals
 │   ├── wsj_fetcher.py              ← automated WSJ PDF downloader: Gmail IMAP + Chrome profile → src/News/pdfs/
 │   ├── scraper_app.py              ← Data Scraper TUI — 21 pipeline buttons (incl. WSJ), log tail, Queue tab, Sources tab, Schedule tab
@@ -222,7 +223,7 @@ StackScreener/
 
 All primary keys follow the `tablename_uid` convention. All tables live in `stackscreener.db`
 and are created by `db.init_db()`. All access goes through `db.py` only.
-**19 tables total. 9 covering indexes.**
+**20 tables total. 10 covering indexes.**
 
 | Table | Purpose |
 |---|---|

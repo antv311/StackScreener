@@ -50,7 +50,7 @@ The foundation all four projects depend on.
 - [x] `screener_config.py` — all constants, weights, thresholds, status strings
 - [x] `db.py` — SQLite layer: 20 tables, 10 covering indexes, CRUD helpers, batch ops
 - [x] `crypto.py` — Fernet encryption (OS keyring) + PBKDF2 password hashing
-- [x] `seeder.py` — schema init, admin user, NYSE/NASDAQ universe (7,001 stocks)
+- [x] `seeder.py` — schema init, admin user, NYSE/NASDAQ universe (~7,010 stocks)
 - [x] `enricher.py` — rate-limited fundamentals worker + IPO calendar + 5y price history
 - [x] `screener.py` — scoring engine (EV/R, PE, EV/EBITDA, margin, PEG, D/E, SC, flow)
 - [x] `screener_run.py` — scan runner (nsr / thematic / watchlist modes + CSV export)
@@ -81,7 +81,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 | `news.py` — WSJ/MS/MF podcasts (Whisper) + Yahoo + AP + CNBC + MW + NewsAPI + GDELT | ✅ Complete |
 | `news.py --classify` — LLM post-ingest hook → supply_chain_events auto-promotion | ✅ Complete |
 | `wsj_fetcher.py` — automated WSJ PDF downloader via Gmail IMAP + Chrome profile | ✅ Complete |
-| `supply_chain.py` — 9 curated events, 51 company links, Tier 1 matching | ✅ Complete |
+| `supply_chain.py` — 27 curated events, 134 company links, Tier 1 matching | ✅ Complete |
 | `inst_flow.py` — Senate + House Stock Watcher congressional trades | ✅ Complete |
 | `inst_flow.py --form4` — SEC EDGAR Form 4 insider buy/sell trades | ✅ Complete |
 | `inst_flow.py --form13f` — SEC EDGAR Form 13F institutional holdings (14 institutions) | ✅ Complete |
@@ -104,7 +104,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 ### Supply Chain Signal Engine
 
 - [x] `supply_chain_events` + `event_stocks` tables — schema, CRUD, role/severity/confidence
-- [x] `supply_chain.py --seed-tier2` — 9 curated events (Taiwan Strait, Red Sea, consumer staples warehouse fire, West Coast port labor strike, industrial REIT capacity shock, etc.)
+- [x] `supply_chain.py --seed-tier2` — 27 curated events, 134 company links: semiconductors (Taiwan Strait, US-China chips, China rare earths), shipping (Red Sea, West Coast ILWU, East Coast ILA, Panama Canal drought), energy (Gulf hurricane, EU natgas cutoff), agriculture (Midwest drought, South Asia fertilizer, Black Sea grain), battery metals (lithium, cobalt, nickel, palladium, graphite), materials (copper, iron ore, titanium, helium, neon/krypton), solar (UFLPA tariffs), chemicals (Rhine drought), REITs (warehouse fire, REIT capacity shock)
 - [x] Tier 1 broad sector matching via `db.get_sector_candidates()`
 - [x] Thematic scan mode — filters universe to disruption-relevant sectors
 - [x] China revenue dampening — high EDGAR China revenue dampens beneficiary scores
@@ -160,6 +160,7 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 - [x] `commodities.py --usda-crops` — USDA NASS weekly crop conditions → `crop_stress` signals
 - [x] `commodities.py --eia-petroleum` — EIA crude/gasoline weekly surprise → `oil_inventory_surprise`
+- [x] `commodities.py --fred-commodities` — FRED 16-series registry: BLS PPI fertilizers, Henry Hub + EU natgas, copper/aluminum/nickel/zinc/tin/iron ore, palm oil/cocoa/coffee/sugar, lumber → per-category surge signals
 - [x] `logistics.py --chokepoints` — AIS vessel counts at 10 global chokepoints → `chokepoint_congestion`
 - [x] `logistics.py --panama` — Panama Canal draft restriction scrape → `canal_draft_restriction`
 

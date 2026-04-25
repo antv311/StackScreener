@@ -14,12 +14,12 @@ StackScreener/
 │   │
 │   │  ── PROJECT 1: DATA SCRAPER ────────────────────────────────────────────
 │   ├── enricher.py                       ← background fundamentals worker + daily IPO calendar check + dividend normalization (_norm_yield)
-│   ├── supply_chain.py                   ← Tier 2 curated seed (9 events, 51 links) + Tier 1 sector matching
+│   ├── supply_chain.py                   ← Tier 2 curated seed (27 events, 134 links) + Tier 1 sector matching
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + two-stage 10-K pipeline (fetch+cache / LLM worker) + 8-K material events + --check-new-filings
 │   ├── inst_flow.py                      ← congressional trades + Form 4 insider trades + Form 13F + options flow
 │   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT + LLM classifier
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B); --worker --limit N
-│   ├── commodities.py                    ← upstream commodity signals: USDA crop conditions + EIA petroleum inventory
+│   ├── commodities.py                    ← upstream commodity signals: USDA crop conditions + EIA petroleum + FRED 16-series (fertilizers/natgas/metals/agri/lumber)
 │   ├── logistics.py                      ← midstream vessel signals: AIS chokepoints (aisstream.io) + Panama Canal draft
 │   ├── wsj_fetcher.py                    ← automated WSJ PDF downloader: Gmail IMAP check + Chrome profile download → src/News/pdfs/ → news.py ingest
 │   ├── scraper_app.py                    ← Data Scraper TUI — 21 pipeline buttons (incl. WSJ), live log tail, Queue tab, Sources tab, Schedule tab
@@ -204,6 +204,7 @@ Tables must be created in this order (FK dependencies):
 | GDELT Project | Global event database | ✅ Live |
 | USDA NASS *(requires free key)* | Weekly crop condition reports | ✅ Live |
 | EIA Open Data *(requires free key)* | Weekly petroleum inventory | ✅ Live |
+| FRED / St. Louis Fed *(requires free key)* | 16 commodity price series (fertilizers, natgas, metals, agri, lumber) | ✅ Live |
 | aisstream.io *(requires free key)* | AIS vessel tracking — 10 chokepoints | ✅ Live |
 | Panama Canal Authority | Draft restriction scrape | ✅ Live |
 | WSJ (via wsj_fetcher.py) | PDF newspaper via Gmail IMAP + Chrome | ✅ Live |

@@ -77,7 +77,7 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `news.py` | P1 | News/media aggregation + ticker tagging |
 | `llm.py` | P1 | LLM extraction pipeline — TurboQuant quantization, inference, 3 extraction tasks |
 | `inst_flow.py` | P1 | Congressional trades (Senate + House) + SEC Form 4/13F ingestion |
-| `commodities.py` | P1 | USDA crop conditions + EIA petroleum → upstream commodity signals |
+| `commodities.py` | P1 | USDA crop conditions + EIA petroleum + FRED 16-series commodity prices → upstream commodity signals |
 | `logistics.py` | P1 | AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals |
 | `wsj_fetcher.py` | P1 | Automated WSJ PDF download via Gmail IMAP + Chrome automation |
 | `scraper_app.py` | P1 | Data Scraper TUI — 21 pipeline buttons (incl. WSJ), log tail, Queue tab, Sources tab, Schedule tab |
