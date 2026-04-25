@@ -27,6 +27,7 @@ from screener_config import (
     CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
     EVENT_TYPE_CONFLICT, EVENT_TYPE_SANCTIONS, EVENT_TYPE_WEATHER,
     EVENT_TYPE_LABOR, EVENT_TYPE_FIRE, EVENT_TYPE_PORT_BLOCKAGE,
+    EVENT_TYPE_NATURAL_DISASTER,
     EVENT_STATUS_ACTIVE, EVENT_STATUS_MONITORING,
     ROLE_IMPACTED, ROLE_BENEFICIARY,
     SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_CRITICAL,
@@ -739,6 +740,606 @@ _TIER2_SEEDS: list[dict] = [
                 "cannot_provide": "normal South Asian agricultural commodity procurement at pre-shortage input costs",
                 "will_redirect":  "Bunge reallocates global origination; South Asian wheat/rice supply tightness boosts commodity trading margins but raises cost basis",
                 "impact_notes":   "Bunge Global significant South Asia grain trade exposure; fertilizer-driven yield shortfall tightens wheat and rice supply regionally",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── European Natural Gas Disruption — Russia Pipeline Cutoff ─────────────
+    {
+        "event": {
+            "title":               "European Natural Gas Supply Cutoff — Russia",
+            "region":              "Europe",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "Russia halted natural gas flows to Europe via Nord Stream 1, Yamal-Europe, "
+                "and TurkStream following the Ukraine invasion and subsequent sanctions. "
+                "Europe imported ~40% of its natural gas from Russia pre-war. The cutoff "
+                "triggered a global LNG demand surge, record European gas prices, and a "
+                "structural shift toward US LNG exports as Europe rapidly built import "
+                "terminals to replace pipeline gas."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            51.2,
+            "longitude":           10.5,
+            "country_code":        "DE",
+            "trade_route":         None,
+            "commodity":           "natural gas, LNG",
+            "affected_sectors":    json.dumps(["Energy", "Industrials", "Materials"]),
+            "affected_industries": json.dumps(["Oil & Gas Storage & Transportation", "Specialty Chemicals", "Electric Utilities"]),
+            "beneficiary_sectors": json.dumps(["Energy"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "LNG",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Sabine Pass and Corpus Christi LNG exports surge to fill European pipeline gas gap",
+                "impact_notes":   "Cheniere Energy largest US LNG exporter; European buyers signed long-term US LNG contracts to replace Russian pipeline gas",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "AR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Antero Resources Appalachian natural gas production captures European LNG export premium",
+                "impact_notes":   "Antero one of largest US natural gas producers; European LNG demand drove Henry Hub and Appalachian gas pricing higher in 2022-2023",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "EQT",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "EQT largest US natural gas producer by volume; LNG export demand drives sustained pricing uplift",
+                "impact_notes":   "EQT Appalachian basin production feeds LNG export terminals; European structural shift to US LNG is multi-year tailwind",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CTRA",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Coterra Energy Marcellus natural gas production benefits from LNG export-driven demand",
+                "impact_notes":   "Coterra (Cabot + Cimarex merger) significant Marcellus gas exposure; LNG export boom is primary pricing catalyst",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Helium Shortage — Federal Reserve Depletion + Geopolitical Supply Risk ─
+    {
+        "event": {
+            "title":               "Global Helium Shortage — Reserve Depletion and Supply Concentration",
+            "region":              "Global",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "The US Bureau of Land Management Federal Helium Reserve — historically the "
+                "world's largest helium stockpile — has been privatized and drawn down. Russia "
+                "(Amur Gas Processing Plant) and Qatar together supply ~50% of global helium. "
+                "Russia's Amur plant fire in 2021 and subsequent geopolitical risk created "
+                "recurring global helium shortages. Helium is critical for semiconductor fab "
+                "cooling, MRI magnet cryogenics, fiber optic production, and space programs. "
+                "No practical substitute exists at scale."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            31.8,
+            "longitude":           34.8,
+            "country_code":        "US",
+            "trade_route":         None,
+            "commodity":           "helium",
+            "affected_sectors":    json.dumps(["Technology", "Healthcare", "Industrials"]),
+            "affected_industries": json.dumps(["Semiconductors", "Semiconductor Equipment", "Health Care Equipment", "Industrial Gases"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2021-08-05",
+        },
+        "links": [
+            {
+                "ticker":         "APD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Air Products captures pricing power as one of four global helium distributors; supply constraints expand margins",
+                "impact_notes":   "Air Products is one of four major global helium distributors; shortage-driven pricing passes through directly to margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "LIN",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Linde is second-largest global helium supplier; shortage tightens contract pricing and spot premiums",
+                "impact_notes":   "Linde (Praxair + Linde merger) one of two dominant global industrial gas companies; helium scarcity is direct margin tailwind",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "AMAT",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "fab equipment installation and testing requiring uninterrupted helium supply for cooling and leak detection",
+                "will_redirect":  "Helium conservation protocols; equipment qualification with higher-purity recycled helium",
+                "impact_notes":   "Applied Materials semiconductor manufacturing equipment requires helium for chamber cooling and process gas; shortage disrupts fab tool installation timelines",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "SYK",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "MRI system installation and magnet re-energization on normal timelines during shortage",
+                "will_redirect":  "Zero-boil-off magnet technology in newer systems reduces ongoing helium consumption",
+                "impact_notes":   "Stryker MRI and imaging businesses require liquid helium to cool superconducting MRI magnets; shortage creates installation backlogs",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Lithium Supply Shock — Battery Supply Chain ───────────────────────────
+    {
+        "event": {
+            "title":               "Lithium Supply Shock — EV Battery Supply Chain",
+            "region":              "South America",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "The Lithium Triangle (Chile, Argentina, Bolivia) holds ~55% of global "
+                "lithium reserves. Chile nationalization moves (2022-2023), Argentina's "
+                "political instability, and Bolivia's state-monopoly structure constrain "
+                "new project development. China controls ~65% of global lithium processing "
+                "capacity. Combined with a structural EV demand surge, lithium carbonate "
+                "prices spiked 10x from 2020 to 2022 peak. A supply disruption (political, "
+                "weather, or Chinese processing curbs) would directly compress EV battery "
+                "margins and delay OEM production targets."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            -22.9,
+            "longitude":           -68.2,
+            "country_code":        "CL",
+            "trade_route":         None,
+            "commodity":           "lithium carbonate, lithium hydroxide",
+            "affected_sectors":    json.dumps(["Materials", "Consumer Discretionary", "Industrials"]),
+            "affected_industries": json.dumps(["Specialty Chemicals", "Automobile Manufacturers", "Auto Parts & Equipment", "Electrical Components & Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2022-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "ALB",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Albemarle largest US lithium producer; supply disruption narrows available non-China supply, expanding ALB pricing power",
+                "impact_notes":   "Albemarle (Greenbushes Australia + Chile Atacama brine) is largest Western lithium producer; supply shocks drive contract repricing",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "SQM",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Sociedad Quimica y Minera controls Atacama Salar brine; Chile disruptions constrain SQM production but pricing power offsets volume loss",
+                "impact_notes":   "SQM is world's second-largest lithium producer from Atacama brine; near-term supply shock is mixed — pricing up but volume risk rises",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "TSLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "EV production at target volumes if lithium carbonate pricing spikes above $80K/tonne",
+                "will_redirect":  "Tesla has direct long-term lithium supply agreements with ALB and SQM; CATL NMC cells partially buffered",
+                "impact_notes":   "Tesla battery cost is largest COGS component; lithium price spike directly compresses gross margin and delays price reductions",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Ultium EV battery platform cell production at cost targets if lithium spikes",
+                "will_redirect":  "GM-LG Energy Solution Ultium Cells JVs have some contracted lithium supply; spot exposure on incremental volume",
+                "impact_notes":   "GM Ultium EV platform is entirely dependent on lithium NMC chemistry; battery cost is primary EV profitability constraint",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "F-150 Lightning and Mustang Mach-E production at target volumes if lithium costs surge",
+                "will_redirect":  "Ford BlueOval SK battery JV (Ford + SK Innovation) has Korean battery supply; lithium sourcing partially via ALB contracts",
+                "impact_notes":   "Ford EV losses ($4-5B annually) are directly amplified by lithium price spikes; battery cost improvement is critical path to EV profitability",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Indonesia Nickel Export Ban — EV Battery Supply Chain ─────────────────
+    {
+        "event": {
+            "title":               "Indonesia Nickel Export Ban — EV Battery Precursor Supply",
+            "region":              "Southeast Asia",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "Indonesia banned unprocessed nickel ore exports in January 2020 to force "
+                "domestic value-add processing. Indonesia holds ~22% of global nickel "
+                "reserves and has become the world's largest nickel producer. The ban, "
+                "combined with Indonesia's goal to become the dominant EV battery supply "
+                "chain hub (HPAL nickel processing → MHP → NMC battery precursors), "
+                "disrupted supply to Japanese and South Korean battery manufacturers. "
+                "Chinese smelters (backed by CATL/BYD) built processing capacity inside "
+                "Indonesia to comply, reshaping global nickel trade flows."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            -0.8,
+            "longitude":           120.0,
+            "country_code":        "ID",
+            "trade_route":         None,
+            "commodity":           "nickel ore, nickel sulfate, NMC battery precursors",
+            "affected_sectors":    json.dumps(["Materials", "Consumer Discretionary", "Industrials"]),
+            "affected_industries": json.dumps(["Diversified Metals & Mining", "Steel", "Automobile Manufacturers", "Electrical Components & Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2020-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "VALE",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Vale Indonesia (PT Vale Indonesia) operates integrated nickel mining and smelting inside Indonesia — compliant with export ban; benefits from competitor exit",
+                "impact_notes":   "Vale largest nickel producer in Indonesia with integrated matte smelting; peers without local processing lost market access, improving Vale's relative position",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "FCX",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Freeport-McMoRan Grasberg mine copper-cobalt byproducts benefit from tighter nickel/base metal supply",
+                "impact_notes":   "FCX benefits indirectly via base metal price strength; Grasberg copper byproducts appreciate when nickel supply tightens battery metals broadly",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "TSLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "battery cell production at target cost if Indonesian HPAL nickel supply is disrupted",
+                "will_redirect":  "Tesla is shifting toward LFP chemistry (no nickel) for standard range; NCA/NMC for longer range still requires nickel",
+                "impact_notes":   "Tesla NMC and NCA battery chemistries require high-purity nickel sulfate; Indonesia supply disruption directly impacts CATL and Panasonic cell pricing",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Ultium NMC cell production at target costs if Indonesian nickel sulfate supply is disrupted",
+                "will_redirect":  "LG Energy Solution Ultium JV sources from multiple suppliers; some spot exposure on incremental volume",
+                "impact_notes":   "GM Ultium platform uses NMC chemistry requiring high-purity nickel; Indonesia is the dominant global source for battery-grade nickel sulfate",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── China Rare Earth Export Controls ─────────────────────────────────────
+    {
+        "event": {
+            "title":               "China Rare Earth Export Controls",
+            "region":              "East Asia",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "China controls ~85% of global rare earth processing and ~60% of global "
+                "mining. Export controls on gallium (July 2023), germanium (August 2023), "
+                "and graphite (October 2023) demonstrated China's willingness to weaponize "
+                "critical mineral supply chains. NdFeB permanent magnets (neodymium, "
+                "dysprosium) are essential for F-35 actuators, guided missile systems, and "
+                "EV traction motors. A full rare earth export embargo would ground US "
+                "defense production within 12-18 months."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            39.9,
+            "longitude":           116.4,
+            "country_code":        "CN",
+            "trade_route":         None,
+            "commodity":           "rare earth elements, neodymium, dysprosium, gallium, germanium, graphite",
+            "affected_sectors":    json.dumps(["Industrials", "Technology", "Consumer Discretionary"]),
+            "affected_industries": json.dumps(["Aerospace & Defense", "Semiconductors", "Semiconductor Equipment", "Automobile Manufacturers", "Electrical Components & Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2023-07-03",
+        },
+        "links": [
+            {
+                "ticker":         "MP",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "MP Materials Mountain Pass mine is only active US rare earth mining and processing site; export controls redirect Western buyers to MP",
+                "impact_notes":   "MP Materials produces ~15% of global rare earth concentrate; Mountain Pass is the only operating US rare earth mine; Chinese export controls are direct pricing catalyst",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "LMT",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "F-35, PAC-3, and THAAD production at full rate if NdFeB magnet supply is disrupted",
+                "will_redirect":  "DoD NDAA Section 881 rare earth supply chain diversification programs; domestic sourcing from MP Materials being developed",
+                "impact_notes":   "Lockheed Martin uses rare earth permanent magnets in F-35 actuators, guided missiles, radar systems; Chinese embargo would directly halt production",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "RTX",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Patriot missile, Javelin, and Stinger production at target rates without Chinese rare earth magnets",
+                "will_redirect":  "Raytheon Technologies DoD-funded rare earth magnet qualification from non-Chinese sources underway",
+                "impact_notes":   "RTX guided munitions and radar systems require NdFeB magnets; Ukrainian war demand for Patriot and Stinger amplifies supply chain urgency",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NOC",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "B-21 Raider, GBSD ICBM, and E-2D Advanced Hawkeye production without Chinese rare earth components",
+                "will_redirect":  "Northrop Grumman DoD supply chain hardening programs; domestic and allied nation alternative sourcing",
+                "impact_notes":   "Northrop Grumman advanced defense systems depend on rare earth elements for motors, actuators, and electronics; GBSD nuclear modernization adds urgency",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "AMAT",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "semiconductor fab equipment production at full rate if gallium and germanium supply is restricted",
+                "will_redirect":  "Applied Materials qualifying alternative gallium nitride and germanium suppliers in Canada, Australia, EU",
+                "impact_notes":   "China's gallium/germanium export controls directly impact compound semiconductor and wafer fab equipment supply chains",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Russia Palladium Sanctions ────────────────────────────────────────────
+    {
+        "event": {
+            "title":               "Russia Palladium Supply Disruption — Auto Catalytic Converters",
+            "region":              "Eastern Europe",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "Russia (Norilsk Nickel) supplies ~40-45% of global palladium, the dominant "
+                "precious group metal in gasoline catalytic converters. Post-Ukraine invasion "
+                "Western sanctions and insurance/shipping restrictions create supply "
+                "uncertainty. Palladium prices spiked to $3,400/oz in March 2022. "
+                "Automotive manufacturers use ~2.5-3g palladium per vehicle catalytic "
+                "converter; disruption raises per-vehicle production costs and creates "
+                "assembly-line shortages if hedges expire."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            69.3,
+            "longitude":           88.2,
+            "country_code":        "RU",
+            "trade_route":         None,
+            "commodity":           "palladium, platinum group metals",
+            "affected_sectors":    json.dumps(["Consumer Discretionary", "Materials", "Industrials"]),
+            "affected_industries": json.dumps(["Automobile Manufacturers", "Auto Parts & Equipment", "Precious Metals & Minerals"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "SBSW",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Sibanye-Stillwater is world's second-largest palladium producer (Montana, US + South Africa); captures demand diverted from Russian supply",
+                "impact_notes":   "SBSW Stillwater Mine (Montana) is largest US PGM producer; Russian sanctions redirect Western automotive buyers to SBSW, driving ASP higher",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "catalytic converter production at normal cost if palladium spot exceeds $3,000/oz",
+                "will_redirect":  "Ford hedging program limits near-term exposure; platinum substitution in gasoline cats being tested",
+                "impact_notes":   "Ford produces ~4M gasoline vehicles annually; at 2.5g/vehicle, 10t palladium annual exposure — Russian supply disruption is direct cost headwind",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "catalytic converter supply at normal PGM costs across ICE and hybrid vehicle lines",
+                "will_redirect":  "GM hedging and strategic stockpile partially offsets; accelerated shift to EVs (zero catalytic converter requirement) is structural mitigation",
+                "impact_notes":   "GM largest US automaker by ICE volume; palladium exposure across Chevrolet, Buick, Cadillac, GMC gasoline and hybrid powertrains",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "STLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Jeep, Ram, and Dodge ICE catalytic converter supply at pre-disruption PGM costs",
+                "will_redirect":  "Stellantis European operations partially hedged via South African PGM suppliers; Ram truck lineup has high palladium loading per unit",
+                "impact_notes":   "Stellantis (Jeep RAM Dodge Chrysler) heavy ICE/truck lineup has highest per-unit palladium loading among US-market OEMs",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Congo Cobalt Disruption — EV Battery Supply Chain ────────────────────
+    {
+        "event": {
+            "title":               "Congo Cobalt Disruption — EV Battery Supply Chain",
+            "region":              "Sub-Saharan Africa",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "The Democratic Republic of Congo supplies ~70% of global cobalt, primarily "
+                "from the Katanga province. Armed conflict, political instability, state "
+                "royalty disputes, and artisanal mining violence periodically disrupt output "
+                "from Glencore, CMOC (formerly Freeport Cobalt), and smaller operators. "
+                "Cobalt is an essential cathode component in NMC and NCA lithium-ion battery "
+                "chemistries used in EVs, consumer electronics, and grid storage. A major "
+                "disruption could delay EV production and spike battery cell costs."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            -10.7,
+            "longitude":           26.5,
+            "country_code":        "CD",
+            "trade_route":         None,
+            "commodity":           "cobalt, cobalt hydroxide, NMC battery cathode",
+            "affected_sectors":    json.dumps(["Materials", "Consumer Discretionary", "Technology"]),
+            "affected_industries": json.dumps(["Diversified Metals & Mining", "Automobile Manufacturers", "Electronic Components", "Electrical Components & Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "TSLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "NCA (Panasonic) and NMC battery cell production at target costs if cobalt spikes",
+                "will_redirect":  "Tesla shifting toward cobalt-free LFP chemistry for standard range globally; NCA cells for long-range/Cybertruck still cobalt-dependent",
+                "impact_notes":   "Tesla uses cobalt-containing NCA chemistry in Panasonic 4680 and 2170 cells; DRC disruption directly impacts cell cost and availability",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Ultium NMC battery cells at target cost if cobalt hydroxide supply is disrupted",
+                "will_redirect":  "LG Energy Solution Ultium JV has some hedged cobalt supply; reducing cobalt content in higher Ni NMC formulations",
+                "impact_notes":   "GM Ultium NMC cells use cobalt; LG Energy Solution sources significant cobalt from DRC via Glencore; disruption flows through JV cost structure",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "VALE",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Vale produces cobalt as byproduct from Sudbury (Canada) and Onca Puma (Brazil) nickel operations; DRC disruption tightens non-DRC supply and lifts cobalt pricing",
+                "impact_notes":   "Vale non-DRC cobalt byproduct production benefits from supply concentration risk premium when DRC instability flares",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "ALB",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Cobalt disruption accelerates shift to high-Ni, low-Co NMC and LFP formulations where ALB lithium is essential regardless of cobalt chemistry",
+                "impact_notes":   "Albemarle lithium demand is chemistry-agnostic for the LFP substitution shift; DRC cobalt risk accelerates ALB's addressable market as LFP adoption grows",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Ukraine Neon / Krypton Shortage — Semiconductor Fab Gases ─────────────
+    {
+        "event": {
+            "title":               "Ukraine Neon and Krypton Shortage — Semiconductor Fab Laser Gases",
+            "region":              "Eastern Europe",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "Ukraine supplies ~50% of global neon and ~30% of global krypton, both "
+                "purified as byproducts of Ukrainian steel production. Neon is the primary "
+                "gas in excimer lasers used for ArF immersion lithography (the dominant "
+                "patterning technology for chips 28nm and below). Russia's February 2022 "
+                "invasion halted Ukrainian neon and krypton production from Mariupol and "
+                "Odessa. Chipmakers and equipment suppliers scrambled to qualify "
+                "alternative suppliers in South Korea, China, and the EU."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            47.9,
+            "longitude":           33.4,
+            "country_code":        "UA",
+            "trade_route":         None,
+            "commodity":           "neon, krypton, xenon, industrial gases",
+            "affected_sectors":    json.dumps(["Technology", "Industrials"]),
+            "affected_industries": json.dumps(["Semiconductors", "Semiconductor Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "AMAT",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "excimer laser-based lithography tool installation and calibration on normal schedule",
+                "will_redirect":  "Applied Materials qualified South Korean and EU neon suppliers; internal gas recycling systems added to fab toolsets",
+                "impact_notes":   "AMAT CVD and etch tools use neon; ArF excimer laser sources in litho tools require ultra-high-purity neon — shortage delays tool qualification and installation",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "LRCX",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "etch tool process qualification at affected fabs during neon shortage",
+                "will_redirect":  "Lam Research adjusted process recipes and qualified alternative gas suppliers; gas recycling reduces neon consumption per wafer",
+                "impact_notes":   "Lam Research plasma etch tools use neon as process gas; DUV litho scanner neon dependency propagates across entire fab patterning flow",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "ASML",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "ArF immersion and KrF excimer laser scanner production and shipment without neon/krypton",
+                "will_redirect":  "ASML qualified Korean (SK, Neon Gas) and US (Matheson) alternative suppliers; gas recycling systems shipped with tools",
+                "impact_notes":   "ASML ArF immersion scanners (most of 7nm-28nm installed base) use neon in excimer laser sources; krypton for KrF scanners; shortage was cited in 2022 earnings as supply chain risk",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "APD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Air Products accelerated non-Ukraine neon and krypton production to fill supply gap",
+                "impact_notes":   "Air Products industrial gas portfolio includes rare gases; Ukrainian supply disruption created pricing and volume opportunity for non-Ukraine rare gas producers",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "LIN",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Linde expanded rare gas (neon, krypton) supply from non-Ukrainian air separation plants globally",
+                "impact_notes":   "Linde rare gas air separation operations in South Korea, Germany, US ramped production; semiconductor customers locked in long-term non-Ukrainian contracts",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Australia / Brazil Iron Ore Disruption ────────────────────────────────
+    {
+        "event": {
+            "title":               "Australia and Brazil Iron Ore Supply Disruption",
+            "region":              "Global",
+            "event_type":          EVENT_TYPE_NATURAL_DISASTER,
+            "description":         (
+                "Australia (Pilbara — BHP, Rio Tinto, Fortescue) and Brazil (Vale Carajás) "
+                "together supply ~80% of global seaborne iron ore. Disruption scenarios "
+                "include: Pilbara cyclone season (Category 5 events close ports 2-4 weeks), "
+                "Brazilian dam failures (Brumadinho January 2019 halted Vale output for "
+                "months), or port infrastructure outages. Iron ore price spikes drive "
+                "global hot-rolled coil and cold-rolled sheet prices higher, benefiting "
+                "US-domestic integrated steelmakers who are net iron ore producers."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            -23.5,
+            "longitude":           -46.6,
+            "country_code":        "BR",
+            "trade_route":         None,
+            "commodity":           "iron ore, hot-rolled coil, steel",
+            "affected_sectors":    json.dumps(["Materials", "Industrials"]),
+            "affected_industries": json.dumps(["Steel", "Diversified Metals & Mining", "Automobile Manufacturers", "Construction & Engineering"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "X",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "US Steel owns Minnesota iron ore mines (Minntac, Keetac); Australian/Brazilian disruption tightens seaborne supply and lifts global steel prices",
+                "impact_notes":   "US Steel is vertically integrated with Midwest iron ore mining; seaborne iron ore price spike improves domestic steel pricing power and widens spread vs. imports",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CLF",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Cleveland-Cliffs is largest US iron ore pellet producer (Minorca, HBI plants); seaborne disruption is direct pricing tailwind",
+                "impact_notes":   "CLF produces 28Mt iron ore pellets annually from Great Lakes region; fully integrated into blast furnace steel; Australian/Brazilian disruption lifts domestic iron ore and HRC pricing",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NUE",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Nucor EAF steel production uses scrap, not iron ore; benefits from elevated HRC pricing when seaborne iron ore tightens global steel supply",
+                "impact_notes":   "Nucor largest US steel producer; EAF model insulated from iron ore cost directly, but benefits from steel price strength when integrated mills lose supply advantage",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "STLD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Steel Dynamics EAF flat-roll mills benefit from steel price uplift driven by seaborne iron ore disruption",
+                "impact_notes":   "Steel Dynamics Columbus mill and Sinton Texas flat-roll capacity benefits from HRC price strength; insulated from iron ore cost while capturing pricing upside",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "vehicle production at target cost if hot-rolled coil prices spike >30% on iron ore disruption",
+                "will_redirect":  "Ford has steel purchase agreements but spot exposure on incremental volume; F-150 aluminum body partially offsets steel dependency",
+                "impact_notes":   "Ford uses ~1,000 lbs steel per vehicle; HRC price spike of 30%+ adds ~$200/vehicle direct cost; F-Series truck steel content is highest-exposure product",
                 "confidence":     CONFIDENCE_MEDIUM,
             },
         ],
