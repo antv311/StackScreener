@@ -79,6 +79,7 @@ _COMMANDS: list[tuple[str, str, list[str]]] = [
     ("News — Classify",       "news.py --classify",        [sys.executable, f"{_SRC}/news.py", "--classify"]),
     ("USDA Crop Conditions",  "commodities.py --usda",     [sys.executable, f"{_SRC}/commodities.py", "--usda-crops"]),
     ("EIA Petroleum",         "commodities.py --eia",      [sys.executable, f"{_SRC}/commodities.py", "--eia-petroleum"]),
+    ("FRED Commodities",      "commodities.py --fred",     [sys.executable, f"{_SRC}/commodities.py", "--fred-commodities"]),
     ("AIS Chokepoints",       "logistics.py --choke",      [sys.executable, f"{_SRC}/logistics.py", "--chokepoints"]),
     ("Panama Canal",          "logistics.py --panama",     [sys.executable, f"{_SRC}/logistics.py", "--panama"]),
     ("Supply Chain Seed",     "supply_chain.py --seed",    [sys.executable, f"{_SRC}/supply_chain.py", "--seed-tier2"]),

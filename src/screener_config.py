@@ -410,7 +410,7 @@ HEATMAP_MEGA_CAP_THRESHOLD:  float = 200e9  # $200B — Mega Cap filter
 HEATMAP_SP500_LIMIT:         int   = 500    # approx S&P 500 by top 500 market cap
 
 # ── USDA Crop Conditions (upstream commodity signals) ─────────────────────────
-USDA_API_BASE:             str   = "https://api.nass.usda.gov/api/get"
+USDA_API_BASE:             str   = "https://quickstats.nass.usda.gov/api/api_GET/"
 USDA_API_KEY_NAME:         str   = "usda_nass"          # key stored in api_keys table
 SIGNAL_CROP_STRESS:        str   = "crop_stress"
 CROP_STRESS_SCORE:         float = 45.0
@@ -424,6 +424,32 @@ SIGNAL_OIL_INVENTORY:      str   = "oil_inventory_surprise"
 OIL_SURPRISE_SCORE:        float = 50.0
 OIL_SURPRISE_THRESHOLD:    float = 0.05  # ±5% vs 5-week rolling avg → signal
 PROVIDER_EIA:              str   = "eia"
+
+# ── FRED Commodity Prices (upstream commodity signals) ────────────────────────
+# Combination of World Bank spot prices + BLS PPI series hosted on FRED.
+# Free key at https://fredaccount.stlouisfed.org → API Keys tab.
+FRED_API_BASE:              str   = "https://api.stlouisfed.org/fred"
+FRED_API_KEY_NAME:          str   = "fred"              # key stored in api_keys table
+PROVIDER_FRED:              str   = "fred"
+
+# Signal types per commodity category
+SIGNAL_FERTILIZER_SURGE:    str   = "fertilizer_price_surge"
+SIGNAL_NATGAS_SURGE:        str   = "natgas_price_surge"
+SIGNAL_METAL_SURGE:         str   = "metal_price_surge"
+SIGNAL_AGRICULTURAL_SURGE:  str   = "agricultural_price_surge"
+SIGNAL_LUMBER_SURGE:        str   = "lumber_price_surge"
+
+# Surge scores and thresholds per category
+FERTILIZER_SURGE_SCORE:     float = 60.0
+FERTILIZER_SURGE_THRESHOLD: float = 0.15  # fertilizers less volatile — 15% bar
+NATGAS_SURGE_SCORE:         float = 65.0
+NATGAS_SURGE_THRESHOLD:     float = 0.25  # nat gas highly volatile — 25% bar
+METAL_SURGE_SCORE:          float = 55.0
+METAL_SURGE_THRESHOLD:      float = 0.20  # LME metals — 20% bar
+AGRICULTURAL_SURGE_SCORE:   float = 50.0
+AGRICULTURAL_SURGE_THRESHOLD: float = 0.15
+LUMBER_SURGE_SCORE:         float = 50.0
+LUMBER_SURGE_THRESHOLD:     float = 0.20
 
 # ── AIS Chokepoint Monitoring (midstream vessel signals) ──────────────────────
 AIS_API_BASE:              str   = "wss://stream.aisstream.io/v0/stream"
@@ -455,6 +481,7 @@ KNOWN_API_ROLES: list[tuple[str, str]] = [
     (AIS_API_KEY_NAME,    "AISstream — vessel tracking at chokepoints"),
     (USDA_API_KEY_NAME,   "USDA NASS — crop condition reports"),
     (EIA_API_KEY_NAME,    "EIA — weekly petroleum inventory"),
+    (FRED_API_KEY_NAME,   "FRED — fertilizer prices (Urea, DAP, Potash), free key"),
     (PROVIDER_GMAIL_WSJ,  "Gmail app password — WSJ PDF delivery"),
     (ROLE_NEWS_CONNECTOR, "News Connector — generic REST/JSON news API (add as many as you want)"),
 ]

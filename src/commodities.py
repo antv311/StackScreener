@@ -35,6 +35,12 @@ from screener_config import (
     EIA_API_BASE, EIA_API_KEY_NAME,
     SIGNAL_OIL_INVENTORY, OIL_SURPRISE_SCORE,
     OIL_SURPRISE_THRESHOLD, PROVIDER_EIA,
+    FRED_API_BASE, FRED_API_KEY_NAME, PROVIDER_FRED,
+    SIGNAL_FERTILIZER_SURGE, FERTILIZER_SURGE_SCORE, FERTILIZER_SURGE_THRESHOLD,
+    SIGNAL_NATGAS_SURGE,    NATGAS_SURGE_SCORE,    NATGAS_SURGE_THRESHOLD,
+    SIGNAL_METAL_SURGE,     METAL_SURGE_SCORE,     METAL_SURGE_THRESHOLD,
+    SIGNAL_AGRICULTURAL_SURGE, AGRICULTURAL_SURGE_SCORE, AGRICULTURAL_SURGE_THRESHOLD,
+    SIGNAL_LUMBER_SURGE,    LUMBER_SURGE_SCORE,    LUMBER_SURGE_THRESHOLD,
     SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW,
     EVENT_TYPE_NATURAL_DISASTER,
 )
@@ -69,21 +75,22 @@ def fetch_usda_crops(year: int | None = None, user_uid: int = 1) -> int:
         return 0
 
     if year is None:
-        year = datetime.now().year
+        year = datetime.now().year - 1  # crop season runs Apr-Oct; fall back to prior year if current unavailable
 
     created = 0
     for crop, sectors in _CROP_SECTORS.items():
         try:
             params = {
-                "key":          api_key,
-                "source_desc":  "SURVEY",
-                "sector_desc":  "CROPS",
-                "commodity_desc": crop,
+                "key":              api_key,
+                "source_desc":      "SURVEY",
+                "sector_desc":      "CROPS",
+                "commodity_desc":   crop,
                 "statisticcat_desc": "CONDITION",
-                "unit_desc":    "PCT EXCELLENT",
-                "year":         year,
-                "agg_level_desc": "NATIONAL",
-                "format":       "JSON",
+                "unit_desc":        "PCT EXCELLENT",
+                "freq_desc":        "WEEKLY",
+                "year__GE":         year,
+                "agg_level_desc":   "NATIONAL",
+                "format":           "JSON",
             }
             r = requests.get(USDA_API_BASE, params=params, headers=_HEADERS, timeout=30)
             r.raise_for_status()
@@ -233,6 +240,155 @@ def fetch_eia_petroleum(user_uid: int = 1) -> int:
     return created
 
 
+# ── FRED Commodity Prices ─────────────────────────────────────────────────────
+#
+# Each entry: (series_id, label, affected_sectors, signal_type, score, threshold, daily)
+# daily=True → series is daily (DHHNGSP); fetched with frequency=m aggregation + limit=14
+#              to skip the incomplete current-month dot value.
+#
+_FRED_COMMODITY_REGISTRY: list[tuple[str, str, list[str], str, float, float, bool]] = [
+    # Fertilizers — BLS PPI (no World Bank spot series available on FRED)
+    ("PCU325311325311A4", "Urea PPI",
+     ["Consumer Staples", "Energy", "Materials"],
+     SIGNAL_FERTILIZER_SURGE, FERTILIZER_SURGE_SCORE, FERTILIZER_SURGE_THRESHOLD, False),
+    ("WPU0652026A",       "Phosphate Fertilizer PPI",
+     ["Consumer Staples", "Materials"],
+     SIGNAL_FERTILIZER_SURGE, FERTILIZER_SURGE_SCORE, FERTILIZER_SURGE_THRESHOLD, False),
+    ("WPU0652",           "Fertilizer Materials PPI",
+     ["Consumer Staples", "Materials", "Energy"],
+     SIGNAL_FERTILIZER_SURGE, FERTILIZER_SURGE_SCORE, FERTILIZER_SURGE_THRESHOLD, False),
+    # Natural Gas
+    ("DHHNGSP",           "Natural Gas (Henry Hub)",
+     ["Energy", "Materials", "Utilities"],
+     SIGNAL_NATGAS_SURGE, NATGAS_SURGE_SCORE, NATGAS_SURGE_THRESHOLD, True),
+    ("PNGASEUUSDM",       "Natural Gas (Europe)",
+     ["Energy", "Materials", "Utilities"],
+     SIGNAL_NATGAS_SURGE, NATGAS_SURGE_SCORE, NATGAS_SURGE_THRESHOLD, False),
+    # Industrial Metals — World Bank spot prices on FRED
+    ("PCOPPUSDM",         "Copper",
+     ["Industrials", "Energy", "Technology", "Consumer Discretionary"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    ("PALUMUSDM",         "Aluminum",
+     ["Industrials", "Consumer Discretionary", "Materials"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    ("PNICKUSDM",         "Nickel",
+     ["Materials", "Consumer Discretionary", "Industrials"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    ("PZINCUSDM",         "Zinc",
+     ["Materials", "Industrials"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    ("PTINUSDM",          "Tin",
+     ["Technology", "Industrials", "Consumer Discretionary"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    ("PIORECRUSDM",       "Iron Ore",
+     ["Industrials", "Materials"],
+     SIGNAL_METAL_SURGE, METAL_SURGE_SCORE, METAL_SURGE_THRESHOLD, False),
+    # Agricultural — World Bank spot prices on FRED
+    ("PPOILUSDM",         "Palm Oil",
+     ["Consumer Staples", "Energy"],
+     SIGNAL_AGRICULTURAL_SURGE, AGRICULTURAL_SURGE_SCORE, AGRICULTURAL_SURGE_THRESHOLD, False),
+    ("PCOCOUSDM",         "Cocoa",
+     ["Consumer Staples"],
+     SIGNAL_AGRICULTURAL_SURGE, AGRICULTURAL_SURGE_SCORE, AGRICULTURAL_SURGE_THRESHOLD, False),
+    ("PCOFFOTMUSDM",      "Coffee (Arabica)",
+     ["Consumer Staples"],
+     SIGNAL_AGRICULTURAL_SURGE, AGRICULTURAL_SURGE_SCORE, AGRICULTURAL_SURGE_THRESHOLD, False),
+    ("PSUGAISAUSDM",      "Sugar",
+     ["Consumer Staples", "Energy"],
+     SIGNAL_AGRICULTURAL_SURGE, AGRICULTURAL_SURGE_SCORE, AGRICULTURAL_SURGE_THRESHOLD, False),
+    # Other
+    ("WPU0811",           "Lumber PPI",
+     ["Real Estate", "Industrials", "Consumer Discretionary"],
+     SIGNAL_LUMBER_SURGE, LUMBER_SURGE_SCORE, LUMBER_SURGE_THRESHOLD, False),
+]
+
+
+def fetch_fred_commodities(user_uid: int = 1) -> int:
+    """Fetch all FRED commodity prices and flag price surges vs 12-month baseline.
+
+    Covers fertilizers, natural gas, industrial metals, agricultural commodities,
+    and lumber. Signals fire when the latest month is above threshold vs baseline.
+
+    Returns number of signals created.
+    """
+    api_key = db.get_api_key(user_uid, FRED_API_KEY_NAME)
+    if not api_key:
+        print(f"[FRED] No API key — set via db.set_api_key(1, 'fred', 'KEY')")
+        print(f"[FRED] Free key at https://fredaccount.stlouisfed.org")
+        return 0
+
+    created = 0
+    url = f"{FRED_API_BASE}/series/observations"
+
+    for series_id, label, sectors, signal_type, base_score, threshold, is_daily in _FRED_COMMODITY_REGISTRY:
+        try:
+            params: dict = {
+                "series_id":  series_id,
+                "api_key":    api_key,
+                "file_type":  "json",
+                "sort_order": "desc",
+                "limit":      14,  # 14 → filter '.' for current month → 13 usable
+            }
+            if is_daily:
+                params["frequency"]          = "m"
+                params["aggregation_method"] = "avg"
+
+            r = requests.get(url, params=params, headers=_HEADERS, timeout=30)
+            r.raise_for_status()
+            observations = r.json().get("observations") or []
+            valid = [o for o in observations if o.get("value") not in (".", None, "")]
+            if len(valid) < 2:
+                if DEBUG_MODE:
+                    print(f"[FRED] Insufficient data for {label}")
+                time.sleep(EDGAR_RATE_LIMIT)
+                continue
+
+            latest_date   = valid[0]["date"]
+            latest_val    = float(valid[0]["value"])
+            baseline_vals = [float(o["value"]) for o in valid[1:]]
+            baseline      = sum(baseline_vals) / len(baseline_vals)
+            pct_change    = (latest_val - baseline) / max(1.0, abs(baseline))
+
+            signal_url = f"fred://{series_id}/{latest_date}"
+            if db.signal_exists_by_url(PROVIDER_FRED, signal_url):
+                if DEBUG_MODE:
+                    print(f"[FRED] {label} {latest_date} already stored — skip")
+                time.sleep(EDGAR_RATE_LIMIT)
+                continue
+
+            if pct_change < threshold:
+                if DEBUG_MODE:
+                    print(f"[FRED] {label} {latest_date}: {pct_change:+.1%} — below threshold, skip")
+                time.sleep(EDGAR_RATE_LIMIT)
+                continue
+
+            severity  = SEVERITY_HIGH if pct_change > threshold * 2 else SEVERITY_MEDIUM
+            sub_score = base_score + (10 if severity == SEVERITY_HIGH else 0)
+            notes = (
+                f"{label} price surge {latest_date}: "
+                f"{latest_val:,.2f} vs {baseline:,.2f} baseline "
+                f"({pct_change:+.1%} above 12-month avg)"
+            )
+            print(f"[FRED] {notes}")
+
+            _store_commodity_signal(
+                signal_type=signal_type,
+                signal_url=signal_url,
+                sub_score=sub_score,
+                notes=notes,
+                provider=PROVIDER_FRED,
+                sectors=sectors,
+            )
+            created += 1
+            time.sleep(EDGAR_RATE_LIMIT)
+
+        except Exception as exc:
+            print(f"[FRED] {label} error: {exc}")
+
+    print(f"[FRED] Done — {created} commodity-surge signals created.")
+    return created
+
+
 # ── Shared helper ─────────────────────────────────────────────────────────────
 
 def _store_commodity_signal(
@@ -269,10 +425,11 @@ def _store_commodity_signal(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="StackScreener commodity signals")
-    parser.add_argument("--usda-crops",   action="store_true", help="USDA NASS weekly crop conditions")
-    parser.add_argument("--eia-petroleum",action="store_true", help="EIA weekly petroleum inventory")
-    parser.add_argument("--all",          action="store_true", help="Run all commodity sources")
-    parser.add_argument("--year",         type=int,            help="--usda-crops: survey year (default: current)")
+    parser.add_argument("--usda-crops",      action="store_true", help="USDA NASS weekly crop conditions")
+    parser.add_argument("--eia-petroleum",   action="store_true", help="EIA weekly petroleum inventory")
+    parser.add_argument("--fred-commodities", action="store_true", help="FRED commodity prices (nat gas, metals, agricultural, fertilizers)")
+    parser.add_argument("--all",              action="store_true", help="Run all commodity sources")
+    parser.add_argument("--year",            type=int,            help="--usda-crops: survey year (default: current)")
     args = parser.parse_args()
 
     db.init_db()
@@ -282,6 +439,9 @@ def main() -> None:
 
     if args.all or args.eia_petroleum:
         fetch_eia_petroleum()
+
+    if args.all or args.fred_commodities:
+        fetch_fred_commodities()
 
 
 if __name__ == "__main__":

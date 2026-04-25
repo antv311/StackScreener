@@ -664,6 +664,86 @@ _TIER2_SEEDS: list[dict] = [
         ],
     },
 
+    # ── South Asia Fertilizer Import Shortage ────────────────────────────────
+    {
+        "event": {
+            "title":               "South Asia Fertilizer Import Shortage",
+            "region":              "South Asia",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "Russia and Belarus together supply ~40% of global potash exports. "
+                "Post-Ukraine invasion sanctions cut off Russian/Belarusian potash "
+                "and urea to South Asia (India, Bangladesh, Pakistan, Sri Lanka), "
+                "which are heavily import-dependent for nitrogen and potash fertilizers. "
+                "Natural gas supply restrictions also constrain domestic nitrogen "
+                "(urea/ammonia) production in the region, driving food inflation and "
+                "crop yield reductions across staples (wheat, rice, lentils) with "
+                "knock-on effects on global food prices."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            20.0,
+            "longitude":           78.0,
+            "country_code":        "IN",
+            "trade_route":         None,
+            "commodity":           "fertilizers, potash, urea, ammonia, DAP",
+            "affected_sectors":    json.dumps(["Consumer Staples", "Materials", "Energy"]),
+            "affected_industries": json.dumps(["Agricultural Products & Services", "Fertilizers & Agricultural Chemicals", "Packaged Foods & Meats"]),
+            "beneficiary_sectors": json.dumps(["Materials", "Energy"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "MOS",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Mosaic captures South Asian demand diverted from sanctioned Russian/Belarusian suppliers; buyers shift to Canadian and Middle Eastern potash",
+                "impact_notes":   "Mosaic is world's largest potash and phosphate producer; Russian/Belarusian sanctions redirect ~40% of global potash trade to non-sanctioned producers",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NTR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Nutrien (Canpotex consortium) potash exports surge to fill South Asian supply gap from sanctioned Belarus/Russia",
+                "impact_notes":   "Nutrien is world's largest potash producer; Canpotex (Nutrien + Mosaic) handles Canadian potash exports and directly captures displaced South Asian demand",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CF",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "CF Industries benefits as Russian urea export restrictions and natural gas supply cuts drive global nitrogen prices sharply higher",
+                "impact_notes":   "CF Industries is the largest North American nitrogen fertilizer producer (urea, ammonia, UAN); Russian gas restrictions directly boost CF pricing power",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "ICL",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "ICL Group positioned as alternative non-sanctioned potash and phosphate supplier; South Asian buyers shift from Belarusian Belaruskali to ICL and North American producers",
+                "impact_notes":   "ICL Israel-based potash and phosphate producer; direct beneficiary as South Asian import tenders specify non-Russian/Belarusian origin",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "ADM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "stable-cost South Asian grain origination — fertilizer shortage reduces regional crop yields",
+                "will_redirect":  "South American and US domestic sourcing substitutes; South Asian food inflation feeds into global commodity prices",
+                "impact_notes":   "Archer-Daniels-Midland global grain trading impacted by South Asian yield reductions; downstream food inflation raises procurement costs across wheat, rice, lentils",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "BG",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal South Asian agricultural commodity procurement at pre-shortage input costs",
+                "will_redirect":  "Bunge reallocates global origination; South Asian wheat/rice supply tightness boosts commodity trading margins but raises cost basis",
+                "impact_notes":   "Bunge Global significant South Asia grain trade exposure; fertilizer-driven yield shortfall tightens wheat and rice supply regionally",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
     # ── Industrial REIT Capacity Shock — E-Commerce Logistics ─────────────────
     {
         "event": {
