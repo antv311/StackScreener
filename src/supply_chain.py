@@ -1345,6 +1345,534 @@ _TIER2_SEEDS: list[dict] = [
         ],
     },
 
+    # ── Panama Canal Drought — Vessel Draft Restrictions ─────────────────────
+    {
+        "event": {
+            "title":               "Panama Canal Drought — Vessel Draft Restrictions",
+            "region":              "Central America",
+            "event_type":          EVENT_TYPE_WEATHER,
+            "description":         (
+                "Severe drought reduces water levels in Gatun Lake, the freshwater reservoir "
+                "that fills Panama Canal locks. The Panama Canal Authority imposed maximum "
+                "draft restrictions of 44 feet (vs. normal 50 feet) beginning late 2023, "
+                "forcing vessels to reduce cargo loads by 20-40% or reroute entirely. "
+                "LNG carriers and Panamax bulk carriers are most affected. Full-cargo LNG "
+                "transits were halted, rerouting via Suez Canal or Cape Horn added "
+                "2-3 weeks and ~$2M per voyage in additional costs."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            9.1,
+            "longitude":           -79.7,
+            "country_code":        "PA",
+            "trade_route":         "Panama Canal",
+            "commodity":           "LNG, bulk commodities, containerized goods",
+            "affected_sectors":    json.dumps(["Energy", "Industrials", "Materials"]),
+            "affected_industries": json.dumps(["Oil & Gas Storage & Transportation", "Marine Shipping", "Agricultural Products & Services"]),
+            "beneficiary_sectors": json.dumps(["Energy"]),
+            "event_date":          "2023-10-01",
+        },
+        "links": [
+            {
+                "ticker":         "LNG",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Canal transit restrictions create vessel shortage and tighter LNG shipping market; Cheniere benefits from higher LNG spot prices driven by supply tightness",
+                "impact_notes":   "Cheniere Sabine Pass LNG exports partially rerouted via Suez; vessel day-rate spike improves netback pricing for contracted and spot LNG cargoes",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "AR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "LNG shipping bottleneck tightens global LNG supply, lifting Henry Hub and Asian LNG spot prices — Antero upstream gas pricing improves",
+                "impact_notes":   "Antero Resources Appalachian gas production benefits from LNG market tightness caused by Panama Canal transit disruption",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "EQT",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "EQT largest US natural gas producer benefits from LNG price support during Panama Canal transit restrictions",
+                "impact_notes":   "EQT Marcellus production pricing improves as canal restrictions tighten global LNG shipping market",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "ZIM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "fully loaded Panamax vessel transits during draft restriction periods",
+                "will_redirect":  "Partial-load canal transits or Suez Canal rerouting; additional fuel and time cost absorbed or passed via surcharges",
+                "impact_notes":   "ZIM trans-Pacific services use Panama Canal; draft restrictions force cargo-light transits or rerouting, directly increasing per-unit shipping costs",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "DAC",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal-capacity Panama Canal container transits for charterers on Asia-US East Coast lanes",
+                "will_redirect":  "Suez Canal alternate routing or reduced-load Panama transits; charter rate negotiations affected",
+                "impact_notes":   "Danaos container fleet exposure to Panama Canal routes on Asia-US East Coast services; drought restrictions add cost and schedule uncertainty",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Russia Titanium Sanctions — Aerospace Manufacturing ───────────────────
+    {
+        "event": {
+            "title":               "Russia Titanium Supply Disruption — Aerospace Manufacturing",
+            "region":              "Eastern Europe",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "Russia (VSMPO-AVISMA) supplied ~25-30% of global aircraft-grade titanium "
+                "sponge and forgings pre-invasion. The Boeing 787 Dreamliner uses titanium "
+                "for ~15% of its structural weight; the 737 MAX uses titanium fasteners "
+                "and structural components throughout. Post-Ukraine invasion sanctions and "
+                "voluntary supply chain exit decisions forced Boeing and Airbus to rapidly "
+                "qualify alternative suppliers in Japan (Toho Titanium), the US (ATI), "
+                "and Kazakhstan. Qualification timelines are 12-24 months, creating "
+                "near-term production rate constraints."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            58.6,
+            "longitude":           59.9,
+            "country_code":        "RU",
+            "trade_route":         None,
+            "commodity":           "titanium sponge, titanium forgings, aerospace titanium",
+            "affected_sectors":    json.dumps(["Industrials", "Materials"]),
+            "affected_industries": json.dumps(["Aerospace & Defense", "Diversified Metals & Mining"]),
+            "beneficiary_sectors": json.dumps(["Materials", "Industrials"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "ATI",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "ATI is largest US aerospace titanium producer; Boeing and Airbus qualification contracts accelerate as Russian supply is replaced",
+                "impact_notes":   "ATI Inc (Allegheny Technologies) produces aerospace titanium mill products and forgings; Russian exit from Western aerospace supply directly expands ATI addressable market",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "BA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "787 Dreamliner and 737 MAX production at full rate targets during Russian titanium qualification gap",
+                "will_redirect":  "Boeing sourcing from ATI, Howmet, and Japanese Toho/Osaka Titanium; inventory buffer partially bridges gap",
+                "impact_notes":   "Boeing 787 is ~15% titanium by structural weight; Russian VSMPO-AVISMA was a key forging supplier; qualification of alternates adds 12-18 months of constraint on production rate targets",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
+    # ── China Solar Supply Chain — Polysilicon and Module Tariffs ─────────────
+    {
+        "event": {
+            "title":               "China Solar Supply Chain Disruption — UFLPA and Tariffs",
+            "region":              "East Asia",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "China controls ~90% of global polysilicon production, ~97% of wafers, "
+                "and ~85% of solar cell and module manufacturing. The US Uyghur Forced "
+                "Labor Prevention Act (UFLPA, June 2022) imposed a blanket import ban on "
+                "goods from Xinjiang, which produces ~35% of global polysilicon. Combined "
+                "with existing Section 201/301 tariffs and AD/CVD duties, Chinese solar "
+                "modules face 40-250% effective tariffs into the US. Installers dependent "
+                "on low-cost Chinese supply face margin compression; US domestic "
+                "manufacturers gain structural competitive advantage."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            39.9,
+            "longitude":           116.4,
+            "country_code":        "CN",
+            "trade_route":         None,
+            "commodity":           "polysilicon, solar wafers, solar cells, solar modules",
+            "affected_sectors":    json.dumps(["Technology", "Industrials", "Energy"]),
+            "affected_industries": json.dumps(["Solar Energy", "Electrical Components & Equipment", "Specialty Chemicals"]),
+            "beneficiary_sectors": json.dumps(["Technology", "Energy"]),
+            "event_date":          "2022-06-21",
+        },
+        "links": [
+            {
+                "ticker":         "FSLR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "First Solar uses cadmium telluride thin-film technology manufactured entirely in the US and Malaysia — zero Chinese polysilicon supply chain; UFLPA and tariffs eliminate Chinese module competition",
+                "impact_notes":   "First Solar is the only major US-headquartered solar manufacturer with fully non-Chinese supply chain; UFLPA creates structural moat; IRA domestic content adder provides additional pricing advantage",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "ENPH",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "microinverter attach rates at prior volume if Chinese module supply to US installers is disrupted",
+                "will_redirect":  "Enphase microinverters work with any module brand; shift to non-Chinese modules (Canadian Solar from SE Asia, First Solar) partially maintains volume",
+                "impact_notes":   "Enphase sells microinverters that attach to solar modules; Chinese module supply disruption reduces total US solar installations, compressing Enphase attach volume",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "RUN",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "residential solar installations at prior cost structure if Chinese module prices spike on tariff enforcement",
+                "will_redirect":  "Sunrun passes module cost increases to homeowners or absorbs margin compression; shifts to compliant non-Chinese supply",
+                "impact_notes":   "Sunrun is largest US residential solar installer; module costs are ~25% of total system cost; tariff-driven price spikes directly compress installation margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "SEDG",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "string inverter attach volume at prior levels if Chinese module supply to US market is disrupted",
+                "will_redirect":  "SolarEdge inverters are module-agnostic; volume impact mirrors overall US solar installation decline from tariff uncertainty",
+                "impact_notes":   "SolarEdge string inverter business tied to overall solar installation activity; Chinese module supply disruption reduces US residential and C&I installation volume",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── East Coast / Gulf Port ILA Strike ─────────────────────────────────────
+    {
+        "event": {
+            "title":               "East Coast and Gulf Port Labor Strike (ILA)",
+            "region":              "North America",
+            "event_type":          EVENT_TYPE_LABOR,
+            "description":         (
+                "A strike by the International Longshoremen's Association (ILA) at East "
+                "Coast and Gulf ports (New York/NJ, Baltimore, Savannah, Charleston, "
+                "Norfolk, Houston, New Orleans) halts container throughput. These ports "
+                "handle ~60% of US container import value, including European goods, "
+                "pharmaceutical ingredients, and finished consumer products. A 3-day ILA "
+                "work stoppage occurred in October 2024; a prolonged strike would rapidly "
+                "exhaust retail inventory buffers. Unlike the West Coast ILWU, the ILA "
+                "covers ports across two coasts with no feasible cargo diversion."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            40.7,
+            "longitude":           -74.0,
+            "country_code":        "US",
+            "trade_route":         "Trans-Atlantic",
+            "commodity":           "containerized goods, pharmaceuticals, consumer products, auto parts",
+            "affected_sectors":    json.dumps(["Industrials", "Consumer Discretionary", "Consumer Staples", "Healthcare"]),
+            "affected_industries": json.dumps(["Marine Shipping", "Air Freight & Logistics", "Trucking", "Packaged Foods & Meats"]),
+            "beneficiary_sectors": json.dumps(["Industrials", "Energy"]),
+            "event_date":          "2024-10-01",
+        },
+        "links": [
+            {
+                "ticker":         "EXPD",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Expeditors captures premium freight forwarding fees as shippers air-freight time-sensitive cargo and rebook ocean freight on tight alternatives",
+                "impact_notes":   "Expeditors historically generates outsized revenue during port disruptions; premium routing and expediting fees benefit freight forwarder margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CHRW",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "C.H. Robinson benefits from rate spike on domestic trucking and intermodal as cargo queues at alternative ports",
+                "impact_notes":   "Third-party logistics provider captures volume and rate upside as shippers scramble for alternate surface transportation during port closure",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NSC",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Norfolk Southern East Coast intermodal network captures cargo overflow from struck East Coast ports routing inland",
+                "impact_notes":   "NSC operates the primary East Coast intermodal rail network; port strike creates volume and pricing power surge for inland intermodal capacity",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "CSX",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "CSX Southeast and Mid-Atlantic intermodal network benefits from cargo rerouting through alternative inland terminals",
+                "impact_notes":   "CSX intermodal operations across Southeast US capture displaced cargo from struck Savannah, Charleston, and Baltimore ports",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "ZIM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "East Coast trans-Atlantic and South America vessel schedules during ILA work stoppage",
+                "will_redirect":  "ZIM cannot divert East Coast cargo; vessels anchor offshore or divert to Canadian ports (Halifax, Montreal) at significant cost and delay",
+                "impact_notes":   "ZIM has significant East Coast trans-Atlantic exposure; ILA strike forces vessel schedule blanking and emergency cargo diversion",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
+    # ── Black Sea Grain Export Disruption ────────────────────────────────────
+    {
+        "event": {
+            "title":               "Black Sea Grain Export Disruption — Russia-Ukraine War",
+            "region":              "Eastern Europe",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "Russia and Ukraine together export ~30% of global wheat, ~20% of global "
+                "corn, and ~80% of global sunflower oil. Russia's invasion halted Ukrainian "
+                "port operations at Odessa, Mykolaiv, and Chornomorsk. The UN-brokered "
+                "Black Sea Grain Initiative (July 2022) partially resumed exports but Russia "
+                "withdrew in July 2023. Ukrainian Danube River corridor partially compensates "
+                "but at ~25% of pre-war throughput. Egypt, Turkey, and East Africa — heavily "
+                "dependent on Black Sea wheat — faced acute food inflation, driving global "
+                "wheat prices to record highs in 2022 and sustained elevation through 2024."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            46.5,
+            "longitude":           32.0,
+            "country_code":        "UA",
+            "trade_route":         "Black Sea",
+            "commodity":           "wheat, corn, sunflower oil, barley",
+            "affected_sectors":    json.dumps(["Consumer Staples", "Industrials", "Materials"]),
+            "affected_industries": json.dumps(["Agricultural Products & Services", "Packaged Foods & Meats", "Fertilizers & Agricultural Chemicals"]),
+            "beneficiary_sectors": json.dumps(["Consumer Staples", "Materials"]),
+            "event_date":          "2022-02-24",
+        },
+        "links": [
+            {
+                "ticker":         "ADM",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "ADM global grain origination and trading captures volume and margin uplift as buyers redirect from Black Sea to US, Brazil, and Argentina",
+                "impact_notes":   "Archer-Daniels-Midland largest US grain handler; Black Sea supply disruption redirects global wheat and corn trade flows through ADM's US and South American origination network at elevated prices",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "BG",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Bunge Global grain trading and export infrastructure captures displaced Black Sea origination demand from Egypt, Turkey, and North Africa buyers",
+                "impact_notes":   "Bunge is one of ABCD grain trading majors; Black Sea disruption drives origination through Bunge US Gulf and South American corridors at elevated spread",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "MOS",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Global food inflation and wheat shortage drives aggressive input purchasing by farmers outside Black Sea region; fertilizer demand strengthens",
+                "impact_notes":   "Mosaic potash and phosphate demand rises as non-Black Sea wheat and corn farmers maximize yield to compensate for global supply shortfall",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "NTR",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Nutrien fertilizer demand improves as farmers in North America, Brazil, and Australia intensify production to fill Black Sea grain gap",
+                "impact_notes":   "Nutrien largest global potash producer and North American ag retail; food security concerns drive accelerated fertilizer purchasing in alternative producing regions",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GIS",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "stable wheat and grain input cost base for cereal, baking, and snack product lines",
+                "will_redirect":  "General Mills hedging program covers 6-12 months; longer-term contract repricing and product reformulation absorbs sustained wheat cost elevation",
+                "impact_notes":   "General Mills wheat-intensive product portfolio (Cheerios, Pillsbury, Gold Medal) directly exposed to Black Sea supply disruption driving global wheat prices higher",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "INGR",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "stable-cost corn and wheat starch inputs for food ingredient production",
+                "will_redirect":  "Ingredion passes input cost increases through B2B customer contracts; some formula substitution with non-grain starches",
+                "impact_notes":   "Ingredion corn and wheat starch derivatives business directly exposed to grain price inflation driven by Black Sea disruption",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+            {
+                "ticker":         "TSN",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "cost-competitive poultry and pork protein at pre-disruption grain feed costs",
+                "will_redirect":  "Tyson passes feed cost increases to retail pricing where market allows; some production rationalization during peak margin pressure",
+                "impact_notes":   "Tyson Foods largest US protein producer; corn and soybean meal feed costs are primary COGS; Black Sea disruption drives sustained feed cost elevation compressing margins",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
+    # ── Copper Supply Disruption — Chile and Peru ─────────────────────────────
+    {
+        "event": {
+            "title":               "Copper Supply Disruption — Chile and Peru Political Instability",
+            "region":              "South America",
+            "event_type":          EVENT_TYPE_CONFLICT,
+            "description":         (
+                "Chile and Peru together account for ~40% of global copper mine supply. "
+                "Recurring disruptions include: Peruvian community protests blocking Las "
+                "Bambas (MMG) and Cañariaco access roads; Chilean constitutional reform "
+                "debates raising royalty and nationalization risk for Codelco and private "
+                "miners; and environmental permit delays. EVs require 4x more copper than "
+                "ICE vehicles; data center buildout and grid electrification add structural "
+                "demand. Any major production curtailment against this demand backdrop "
+                "drives copper prices sharply higher and raises EV and infrastructure costs."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            -9.2,
+            "longitude":           -75.0,
+            "country_code":        "PE",
+            "trade_route":         None,
+            "commodity":           "copper, copper concentrate, copper cathode",
+            "affected_sectors":    json.dumps(["Materials", "Consumer Discretionary", "Industrials", "Technology"]),
+            "affected_industries": json.dumps(["Copper", "Automobile Manufacturers", "Electrical Components & Equipment", "Construction & Engineering"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2024-01-01",
+        },
+        "links": [
+            {
+                "ticker":         "FCX",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Freeport-McMoRan Grasberg mine (Indonesia) and Americas portfolio benefit from copper price spike when Chilean/Peruvian supply is disrupted",
+                "impact_notes":   "FCX largest publicly traded copper producer; Grasberg is world's largest copper-gold mine; Chilean/Peruvian disruption tightens global supply and directly lifts FCX realized copper pricing",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "SCCO",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal production volumes from Peru operations (Toquepala, Cuajone) during community blockades",
+                "will_redirect":  "Southern Copper Mexico operations (Buenavista) partially offset Peru production curtailments; higher copper prices offset volume loss",
+                "impact_notes":   "SCCO has significant Peru copper mining exposure; Las Bambas-style community blockades historically halted operations for weeks; higher copper prices partially compensate",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "TSLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "EV drivetrain and charging infrastructure at target cost if copper prices spike above $5/lb",
+                "will_redirect":  "Tesla uses aluminum wiring substitution where possible; copper-intensive Model 3/Y motor cannot fully substitute",
+                "impact_notes":   "Tesla EVs use ~80kg copper per vehicle vs ~25kg for ICE; copper price spike directly adds $200-400/vehicle cost at $4-5/lb copper",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "F-150 Lightning and EV transition cost targets if copper spikes materially",
+                "will_redirect":  "Ford EV program cost reduction plans assume flat-to-declining copper; price spike widens already negative EV segment losses",
+                "impact_notes":   "Ford EV models require significantly more copper than ICE; copper cost inflation directly impairs Ford EV segment margin improvement trajectory",
+                "confidence":     CONFIDENCE_MEDIUM,
+            },
+        ],
+    },
+
+    # ── Rhine River Low Water — European Industrial Disruption ────────────────
+    {
+        "event": {
+            "title":               "Rhine River Low Water — European Industrial Logistics Disruption",
+            "region":              "Europe",
+            "event_type":          EVENT_TYPE_WEATHER,
+            "description":         (
+                "The Rhine River is Europe's primary industrial waterway, connecting the "
+                "Port of Rotterdam to the Ruhr industrial valley and Switzerland. Severe "
+                "summer droughts (2018, 2022) reduce water levels at key chokepoints "
+                "(Kaub gauge) below minimum navigation depths, halting bulk barge traffic "
+                "for weeks. BASF's Ludwigshafen plant requires Rhine for feedstock delivery "
+                "and cooling water; production cuts of 40%+ occur at low water. US chemical "
+                "companies with European exposure face supply constraints while US-based "
+                "competitors gain market share."
+            ),
+            "severity":            SEVERITY_HIGH,
+            "status":              EVENT_STATUS_MONITORING,
+            "latitude":            50.1,
+            "longitude":           7.8,
+            "country_code":        "DE",
+            "trade_route":         None,
+            "commodity":           "chemicals, coal, grain, petroleum products",
+            "affected_sectors":    json.dumps(["Materials", "Energy", "Consumer Staples"]),
+            "affected_industries": json.dumps(["Specialty Chemicals", "Commodity Chemicals", "Coal & Consumable Fuels"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2022-08-01",
+        },
+        "links": [
+            {
+                "ticker":         "DOW",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Dow US and Texas Gulf Coast chemical production gains European market share as Rhine-dependent competitors (BASF, Evonik) curtail output",
+                "impact_notes":   "Dow Inc Gulf Coast ethylene and polyethylene plants unaffected by Rhine drought; captures European spot demand displaced from curtailed Rhine-corridor chemical plants",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "LYB",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "LyondellBasell US Gulf Coast polyolefin production benefits from European Rhine-driven supply tightness",
+                "impact_notes":   "LyondellBasell largest global polyolefin producer; US and Middle East plants benefit from European chemical supply constraints caused by Rhine logistics disruption",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "CE",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "normal acetate and engineered materials production at Frankfurt and European facilities during Rhine low water",
+                "will_redirect":  "Celanese European plants partially substitute rail and truck logistics; higher input delivery cost compresses European segment margins",
+                "impact_notes":   "Celanese has significant European chemical manufacturing operations reliant on Rhine logistics for feedstock and product distribution; Rhine drought directly raises European input costs",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
+    # ── China Graphite Export Controls — EV Battery Anodes ───────────────────
+    {
+        "event": {
+            "title":               "China Graphite Export Controls — EV Battery Anode Supply",
+            "region":              "East Asia",
+            "event_type":          EVENT_TYPE_SANCTIONS,
+            "description":         (
+                "China controls ~70% of global natural graphite mining and ~90% of synthetic "
+                "graphite anode production. In October 2023, China imposed export licensing "
+                "requirements on graphite, covering natural flake, spherical graphite, and "
+                "synthetic graphite — the primary anode material in all lithium-ion batteries. "
+                "No commercial-scale non-Chinese synthetic graphite anode supply chain exists. "
+                "Unlike lithium (which has LFP as a cobalt/nickel alternative), graphite "
+                "anodes have no commercial substitute at battery scale. US and European "
+                "battery makers face 12-24 month lead times to qualify non-Chinese anode "
+                "suppliers."
+            ),
+            "severity":            SEVERITY_CRITICAL,
+            "status":              EVENT_STATUS_ACTIVE,
+            "latitude":            39.9,
+            "longitude":           116.4,
+            "country_code":        "CN",
+            "trade_route":         None,
+            "commodity":           "graphite, spherical graphite, synthetic graphite anode",
+            "affected_sectors":    json.dumps(["Materials", "Consumer Discretionary", "Technology"]),
+            "affected_industries": json.dumps(["Specialty Chemicals", "Automobile Manufacturers", "Electrical Components & Equipment"]),
+            "beneficiary_sectors": json.dumps(["Materials"]),
+            "event_date":          "2023-10-20",
+        },
+        "links": [
+            {
+                "ticker":         "NVX",
+                "role":           ROLE_BENEFICIARY,
+                "cannot_provide": None,
+                "will_redirect":  "Novonix produces synthetic graphite anode material in Chattanooga, Tennessee — only commercial-scale non-Chinese synthetic graphite anode producer in the US",
+                "impact_notes":   "NVX is the primary US-based synthetic graphite anode manufacturer; Chinese export controls are the direct demand catalyst for Novonix's DOE-funded US expansion",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "TSLA",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "4680 and 2170 cell production at target costs if Chinese graphite anode supply is restricted",
+                "will_redirect":  "Tesla in-house cell production (4680) is exploring silicon anode blends but requires graphite base; qualifying non-Chinese sources is 18-24 month timeline",
+                "impact_notes":   "Tesla battery cells require ~70kg graphite anode material per vehicle; no commercial non-Chinese synthetic graphite supply chain exists at scale to substitute",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "GM",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "Ultium cell production at target costs if LG Energy Solution cannot source non-Chinese graphite anode at scale",
+                "will_redirect":  "GM-LG Ultium Cells JV working to qualify Novonix and other non-Chinese anode suppliers under DOE loan program",
+                "impact_notes":   "GM Ultium NMC cells manufactured by LG Energy Solution; LG sources graphite anode from Chinese suppliers; export controls threaten Ultium cell cost structure",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+            {
+                "ticker":         "F",
+                "role":           ROLE_IMPACTED,
+                "cannot_provide": "BlueOval SK battery cell production cost targets if SK On cannot source non-Chinese graphite at scale",
+                "will_redirect":  "Ford BlueOval SK JV (Ford + SK Innovation) actively qualifying alternative graphite suppliers; DOE grants supporting domestic anode supply development",
+                "impact_notes":   "Ford EV battery cells produced by SK On; SK sources graphite predominantly from China; export controls are direct threat to BlueOval SK cell cost roadmap",
+                "confidence":     CONFIDENCE_HIGH,
+            },
+        ],
+    },
+
     # ── Industrial REIT Capacity Shock — E-Commerce Logistics ─────────────────
     {
         "event": {
