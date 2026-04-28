@@ -119,12 +119,13 @@ Update `HomePanel._load_stats()` to call these helpers.
 
 ---
 
-## TIER 2 — SQL Centralization (~3-4 hrs, medium risk)
+## TIER 2 — SQL Centralization ✅ DONE (2026-04-25)
+
+> All Tier 3 and Tier 4 tasks completed 2026-04-27.
 
 **Core rule:** "All DB access goes through db.py only — never raw SQL in other modules."
 
-This is the most impactful refactoring. It creates 25 named helpers in db.py
-and eliminates all inline SQL from the P1 pipeline modules.
+16 raw `db.query()` calls removed across 5 P1 modules. 12 named helpers added to db.py.
 
 ---
 
@@ -191,157 +192,58 @@ Queries to extract:
 
 ---
 
-## TIER 3 — Shared HTTP Client + Unified Logging (~4-5 hrs, medium risk)
+## TIER 3 — Shared HTTP Client + Unified Logging ✅ DONE (2026-04-27)
 
 These two changes improve maintainability and debuggability significantly,
 but require touching many call sites across all P1 modules.
 
 ---
 
-### T3-A: Create `src/utils_http.py` — shared rate-limited HTTP client
+### T3-A: Create `src/utils_http.py` — shared HTTP client ✅ DONE
 
-**New file:** `src/utils_http.py`
+**New file:** `src/utils_http.py` — `HttpClient` class injects default headers, no automatic rate limiting (modules manage their own `time.sleep()` calls to avoid double-sleeping).
 
-```python
-import time
-import requests
-from screener_config import DEBUG_MODE
-import logging
-
-logger = logging.getLogger(__name__)
-
-class RateLimitedClient:
-    def __init__(self, headers: dict, rate_limit: float = 0.5):
-        self.headers = headers
-        self.rate_limit = rate_limit
-
-    def get(self, url: str, **kwargs) -> requests.Response:
-        resp = requests.get(url, headers=self.headers, **kwargs)
-        time.sleep(self.rate_limit)
-        return resp
-
-    def get_json(self, url: str, **kwargs) -> dict:
-        resp = self.get(url, **kwargs)
-        resp.raise_for_status()
-        return resp.json()
-```
-
-**Usage in each module:**
-```python
-# edgar.py — replace _EDGAR_HEADERS + manual sleep
-_client = RateLimitedClient(
-    headers={"User-Agent": EDGAR_IDENTITY},
-    rate_limit=EDGAR_RATE_LIMIT
-)
-resp = _client.get(url, timeout=30)
-```
-
-**Files to update:**
-- `edgar.py` — ~15 call sites
-- `inst_flow.py` — ~12 call sites
-- `news.py` — ~8 call sites
-- `commodities.py` — ~5 call sites
-- `logistics.py` — ~5 call sites
-
-Estimated impact: Remove ~50 `time.sleep()` calls + ~50 `requests.get()` calls,
-replaced with ~10 client instantiations + clean `.get()` calls.
+**Updated:** `edgar.py`, `inst_flow.py`, `commodities.py`, `logistics.py` — replaced per-module `_HEADERS` dicts + raw `requests.get()` with `_client = HttpClient(...)` + `_client.get(...)`. Removed `import requests` from all four modules. `news.py` skipped (headers vary too much per call).
 
 ---
 
-### T3-B: Replace `if DEBUG_MODE: print()` with `logging` module
+### T3-B: Replace `if DEBUG_MODE: print()` with `logging` module ✅ DONE
 
-**All P1 modules:** enricher, edgar, news, llm, inst_flow, commodities, logistics, supply_chain
-
-Current pattern (scattered across ~80 sites):
-```python
-if DEBUG_MODE:
-    print(f"[edgar] error fetching CIK for {ticker}: {e}")
-```
-
-Replace with:
-```python
-import logging
-logger = logging.getLogger(__name__)
-
-# In error paths:
-logger.warning(f"error fetching CIK for {ticker}: {e}")
-```
-
-Configure root logger in each entry point (`if __name__ == "__main__":`):
-```python
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s"
-)
-```
-
-`DEBUG_MODE` is still used to set the logging level — so the flag isn't removed,
-just used where it belongs (configuring the logger, not guarding every print).
-
-Keep `print()` for user-visible progress output (enricher progress bars,
-screener_run scan summaries) — only replace debug/error logging uses.
+All `if DEBUG_MODE: print(...)` blocks replaced with `logger.debug(...)` across: `enricher.py`, `edgar.py`, `inst_flow.py`, `news.py`, `commodities.py`, `logistics.py`, `supply_chain.py`, `screener_run.py`, `wsj_fetcher.py`. Each module now has `import logging` + `logger = logging.getLogger(__name__)` + `logging.basicConfig(level=logging.DEBUG if DEBUG_MODE else logging.INFO, ...)` in `main()`.
 
 ---
 
-## TIER 4 — Structural Cleanup (Optional, ~1-2 days)
-
-These are improvements rather than rule-fixes. Do when the codebase gets bigger or
-if a second developer joins.
+## TIER 4 — Structural Cleanup ✅ DONE (2026-04-27)
 
 ---
 
-### T4-A: Split news.py into submodules (~2 hrs)
+### T4-A: Split news.py into submodules ✅ DONE
 
-**New files:**
-- `src/news_podcast.py` — WSJ/MS/MF podcast fetch + Whisper transcription (~300 lines)
-- `src/news_feeds.py` — AP/CNBC/MarketWatch RSS + NewsAPI + GDELT (~450 lines)
-- `src/news.py` — thin orchestrator: imports from submodules, exposes public API, CLI entry point (~200 lines)
-
-**Benefit:** Each file has a clear, single focus. Easier to extend with new sources.
+**New files:** `src/news_utils.py` (shared utilities), `src/news_podcast.py` (podcast + PDF pipeline), `src/news_feeds.py` (article RSS + NewsAPI + GDELT). `src/news.py` rewritten as ~230-line thin orchestrator — imports all functions from submodules, re-exports via `__all__` for backwards compat. Import DAG: `news_utils` ← `news_podcast` / `news_feeds` ← `news`.
 
 ---
 
-### T4-B: Extract `_score_inverse()` in screener.py (~10 min)
+### T4-B: Extract `_score_inverse()` in screener.py ✅ DONE
 
-**File:** `screener.py`
-
-Five scoring functions are identical except for the `max_val`:
-```python
-def _score_pe(val: float | None) -> float:
-    if val is None: return 50.0
-    if val <= 0: return 0.0
-    return _clamp((100.0 - val) / 100.0 * 100.0)
-```
-
-Extract:
-```python
-def _score_inverse(val: float | None, max_val: float, null_score: float = 50.0) -> float:
-    if val is None: return null_score
-    if val <= 0: return 0.0
-    return _clamp((max_val - val) / max_val * 100.0)
-```
-Replace 5 duplicate functions with calls to this helper.
+Added `_score_inverse(val, max_val)` helper after `_clamp()`. Replaced `_score_pe`, `_score_ev_revenue`, `_score_ev_ebitda`, `_score_peg` with one-liner calls. `_score_profit_margin` and `_score_debt_equity` kept unchanged (different patterns).
 
 ---
 
-### T4-C: Split app.py into tui/ subpackage (~1 day)
+### T4-C: Split app.py into tui/ subpackage ✅ DONE
 
 **New structure:**
 ```
 src/tui/
-    __init__.py      — exports StackScreenerApp
-    screens.py       — LoginScreen, ChangePasswordScreen
-    panels.py        — HomePanel, ResearchPanel, LogisticsPanel, SettingsPanel
-    tabs.py          — ScreenerTab, CalendarTab, StockComparisonTab, StockPicksTab, etc.
+    __init__.py      — StackScreenerApp
+    formatters.py    — _fmt_mcap, _fmt_pct, _fmt_pct_abs, _fmt_ratio, _score_bar, _week_dates
     modals.py        — StockQuoteModal
-    formatters.py    — _fmt_mcap, _fmt_pct, _score_bar, etc.
-src/app.py           — 5-line entry point: from tui import StackScreenerApp; app.run()
+    tabs.py          — ScreenerTab, DayCell, CalendarTab, StockComparisonTab, StockPicksTab, NewsTab, ResearchReportsTab
+    panels.py        — NavItem, Sidebar, HeatmapTile, WorldMap, HomePanel, ResearchPanel, EventListItem, LogisticsPanel, SettingsPanel, MainScreen
+    screens.py       — LoginScreen, ChangePasswordScreen
+src/app.py           — 12-line entry point: from tui import StackScreenerApp
 ```
 
-**Benefit:** Each concern in its own file; `tabs.py` ~600 lines, `modals.py` ~400 lines,
-`screens.py` ~200 lines, `panels.py` ~300 lines. Currently everything is in 1,966 lines.
-
-Risk: Medium. Requires updating all intra-class references. Test each screen after split.
+Import DAG (no circular imports): `formatters` ← `modals` ← `tabs` ← `panels` ← `screens` ← `__init__`.
 
 ---
 
@@ -358,24 +260,26 @@ Risk: Medium. Requires updating all intra-class references. Test each screen aft
 
 ## Execution Order
 
-| Order | Tier | Task | Time | Risk |
-|---|---|---|---|---|
-| 1 | T1-A | Email in User-Agents | 15 min | Low |
-| 2 | T1-B | _CONFIDENCE_MULT to config | 10 min | Low |
-| 3 | T1-C | Remove legacy podcast constants | 20 min | Low |
-| 4 | T1-D | UI config dicts to screener_config | 45 min | Low |
-| 5 | T1-E | Fix sys.path hacks | 10 min | Low |
-| 6 | T1-F | HomePanel raw SQL → db.py | 20 min | Low |
-| 7 | T2-A | edgar.py SQL → db.py helpers | 60 min | Medium |
-| 8 | T2-B | inst_flow.py SQL → db.py helpers | 45 min | Medium |
-| 9 | T2-C | commodities + logistics SQL | 30 min | Medium |
-| 10 | T2-D | scraper_app SQL | 20 min | Medium |
-| 11 | T2-E | supply_chain SQL | 15 min | Medium |
-| 12 | T3-A | utils_http.py shared client | 120 min | Medium |
-| 13 | T3-B | Unified logging | 90 min | Medium |
-| 14 | T4-A | Split news.py (optional) | 120 min | Medium |
-| 15 | T4-B | _score_inverse abstraction (optional) | 10 min | Low |
-| 16 | T4-C | Split app.py into tui/ (optional) | 480 min | High |
+| Order | Tier | Task | Status |
+|---|---|---|---|
+| 1 | T1-A | Email in User-Agents | ✅ Done (milestone 9) |
+| 2 | T1-B | _CONFIDENCE_MULT to config | ✅ Done (milestone 9) |
+| 3 | T1-C | Remove legacy podcast constants | ✅ Done (milestone 9) |
+| 4 | T1-D | UI config dicts to screener_config | ✅ Done (milestone 9) |
+| 5 | T1-E | Fix sys.path hacks | ✅ Done (milestone 9) |
+| 6 | T1-F | HomePanel raw SQL → db.py | ✅ Done (milestone 9) |
+| 7 | T2-A | edgar.py SQL → db.py helpers | ✅ Done (2026-04-25) |
+| 8 | T2-B | inst_flow.py SQL → db.py helpers | ✅ Done (2026-04-25) |
+| 9 | T2-C | commodities + logistics SQL | ✅ Done (2026-04-25) |
+| 10 | T2-D | scraper_app SQL | ✅ Done (2026-04-25) |
+| 11 | T2-E | supply_chain SQL | ✅ Done (2026-04-25) |
+| 12 | T3-A | utils_http.py shared client | ✅ Done (2026-04-27) |
+| 13 | T3-B | Unified logging | ✅ Done (2026-04-27) |
+| 14 | T4-A | Split news.py | ✅ Done (2026-04-27) |
+| 15 | T4-B | _score_inverse abstraction | ✅ Done (2026-04-27) |
+| 16 | T4-C | Split app.py into tui/ | ✅ Done (2026-04-27) |
+
+**All refactor tasks complete. No remaining items.**
 
 ---
 

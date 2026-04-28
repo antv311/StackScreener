@@ -13,7 +13,7 @@ positioned to benefit from supply chain disruptions.
 
 **Owner:** Tony (antv311)
 **Repo:** https://github.com/antv311/StackScreener
-**Stack:** Python 3.14.2, SQLite, yfinance, yahooquery, pandas-ta, CurrencyConverter, Textual, cryptography, keyring
+**Stack:** Python 3.14.4, SQLite, yfinance, yahooquery, pandas-ta, CurrencyConverter, Textual, cryptography, keyring
 
 ---
 
@@ -24,10 +24,18 @@ event), capital flows toward companies positioned to fill the gap. StackScreener
 disruptions, maps affected industries and sectors, runs fundamental screening against that
 universe, and surfaces the best-positioned companies to benefit.
 
-**Signal flow:**
+**Full pipeline (6 stages):**
 ```
-Disruption detected → Affected sectors identified → Fundamentals screened → Ranked output
+[Scrape] → [Aggregate] → [Index] → [Digestible] → [LLM Opinion] → [End User]
 ```
+- **Scrape:** All data collection (P1 modules) — upstream/midstream/downstream signals globally
+- **Aggregate:** context_builder.py assembles per-company signal snapshots (planned)
+- **Index:** stock_relationships graph — Company A → Company B via Company C (planned)
+- **Digestible:** Structured context pack formatted for the local LLM (planned)
+- **LLM Opinion:** Qwen2.5 synthesizes investment thesis → research_reports table (planned)
+- **End User:** Bloomberg TUI + screener (P3 — active)
+
+See `memory/pipeline_architecture.md` for full stage breakdown, gap analysis, and build order.
 
 ---
 
@@ -183,7 +191,11 @@ StackScreener/
 │   ├── supply_chain.py             ← Tier 2 curated seed (27 events, 134 links) + Tier 1 sector matching
 │   ├── edgar.py                    ← SEC EDGAR: CIK seed + XBRL facts + two-stage 10-K pipeline + 8-K material events
 │   ├── inst_flow.py                ← congressional trades + Form 4 insider trades + Form 13F + options flow
-│   ├── news.py                     ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MW + NewsAPI + GDELT + LLM classifier
+│   ├── news.py                     ← thin orchestrator: imports from news_utils/news_podcast/news_feeds; re-exports all public names
+│   ├── news_utils.py               ← shared news utilities: ticker tagging, whisper cache, _ensure_dirs, _store_ticker_signals
+│   ├── news_podcast.py             ← podcast + WSJ PDF pipeline (WSJ/MS/MF RSS + Whisper + ingest_wsj_pdf)
+│   ├── news_feeds.py               ← article RSS + NewsAPI + GDELT (AP, CNBC, MarketWatch, Reuters, generic connectors)
+│   ├── utils_http.py               ← shared HTTP client: HttpClient (header injection only, no rate limiting)
 │   ├── llm.py                      ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B); --worker --limit N
 │   ├── commodities.py              ← USDA crop conditions + EIA petroleum + FRED (16-series: fertilizers/natgas/metals/agri/lumber) → upstream commodity signals
 │   ├── logistics.py                ← AIS chokepoints (aisstream.io) + Panama Canal draft → midstream signals
@@ -192,7 +204,14 @@ StackScreener/
 │   ├── — P2: DATABASE & SERVER —
 │   ├── db_app.py                   ← Database & Server TUI — table browser, SQL shell, DB stats
 │   ├── — P3: BLOOMBERG TUI —
-│   ├── app.py                      ← Bloomberg TUI — login, sidebar ticker search, Research tabs, Home heatmap, Logistics world map
+│   ├── app.py                      ← 12-line entry point: `from tui import StackScreenerApp`
+│   ├── tui/                        ← Bloomberg TUI subpackage
+│   │   ├── __init__.py             ← StackScreenerApp(App)
+│   │   ├── formatters.py           ← _fmt_mcap, _fmt_pct, _fmt_pct_abs, _fmt_ratio, _score_bar, _week_dates
+│   │   ├── modals.py               ← StockQuoteModal (Overview, Signals, History, News, Filings)
+│   │   ├── tabs.py                 ← ScreenerTab, CalendarTab, StockComparisonTab, StockPicksTab, NewsTab, ResearchReportsTab
+│   │   ├── panels.py               ← Sidebar, HeatmapTile, WorldMap, HomePanel, LogisticsPanel, SettingsPanel, MainScreen
+│   │   └── screens.py              ← LoginScreen, ChangePasswordScreen
 │   └── Results/                    ← scan output (gitignored)
 ├── src/filings/
 │   ├── 10k/                        ← cached 10-K filing text ({ticker}_{cik}_{accession}.txt)
@@ -246,6 +265,8 @@ and are created by `db.init_db()`. All access goes through `db.py` only.
 | `llm_jobs` | Job queue for LLM work (classify_news / extract_10k / parse_8k); statuses: pending/running/done/failed/paused/cancelled |
 | `newsapi_keywords` | Per-user keyword list for NewsAPI searches |
 | `newsapi_sources` | NewsAPI source catalog (cached from API) |
+| `scheduled_jobs` | Pipeline scheduler — recurring jobs with interval_hours, last_run_at, enabled flag |
+| `stock_relationships` | *(planned)* Company-to-company graph — supplier/customer/3pl/warehouse_tenant; from_stock_uid → to_stock_uid |
 
 Watchlist query pattern:
 ```sql
@@ -293,7 +314,7 @@ Default admin account: `admin / admin` — forced to change on first login.
 
 ## Build Environment (Windows)
 
-- Python 3.14.2 in a venv called `venv` (located at `StackScreener/venv/`)
+- Python 3.14.4 in a venv called `venv` (located at `StackScreener/venv/`) — PyManager install at `C:\Users\antv3\AppData\Local\Python\bin\`
 - C extensions compiled from source via **x64 Native Tools Command Prompt for VS 2022**
 - Build prerequisites: `meson-python`, `meson`, `ninja`, `cython`, `pybind11`,
   `versioneer`, `setuptools_scm`, `pkgconfiglite` (via Chocolatey)
@@ -326,3 +347,9 @@ Default admin account: `admin / admin` — forced to change on first login.
 - EIA Open Data API: https://www.eia.gov/opendata/ (free key)
 - aisstream.io WebSocket API: https://aisstream.io (free key — requires signup)
 - Panama Canal Authority restrictions: https://www.pancanal.com/eng/op/aqRestricciones.html (public)
+- IMF PortWatch API: https://portwatch.imf.org (free, no key — planned)
+- FAA NASSTATUS: https://nasstatus.faa.gov (free XML — planned)
+- Census Bureau MTIS: https://www.census.gov/mtis (free, no key — planned)
+- CONAB (Brazil crop reports): https://www.conab.gov.br (free, English available — planned)
+- Eurostat transport stats: https://ec.europa.eu/eurostat (free API — planned)
+- AAR rail traffic: https://www.aar.org/data (free weekly — planned)

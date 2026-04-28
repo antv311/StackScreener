@@ -25,6 +25,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -32,9 +33,8 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
-import requests
-
 import db
+from utils_http import HttpClient
 from screener_config import (
     DEBUG_MODE,
     EDGAR_RATE_LIMIT, EDGAR_STALENESS_DAYS, EDGAR_FILING_STALENESS, EDGAR_IDENTITY,
@@ -48,7 +48,9 @@ from screener_config import (
     FILINGS_CACHE_DIR,
 )
 
-_EDGAR_HEADERS   = {"User-Agent": EDGAR_IDENTITY}
+_edgar_client    = HttpClient({"User-Agent": EDGAR_IDENTITY})
+
+logger = logging.getLogger(__name__)
 
 _CIK_MAP_URL     = "https://www.sec.gov/files/company_tickers.json"
 
@@ -111,7 +113,7 @@ def _norm_geo_label(raw: str) -> str:
 def seed_ciks() -> None:
     """Download the SEC ticker→CIK map and update every matching stock."""
     print("Fetching SEC ticker→CIK map...")
-    resp = requests.get(_CIK_MAP_URL, headers=_EDGAR_HEADERS, timeout=30)
+    resp = _edgar_client.get(_CIK_MAP_URL, timeout=30)
     resp.raise_for_status()
     cik_data = resp.json()
 
@@ -121,7 +123,7 @@ def seed_ciks() -> None:
         for entry in cik_data.values()
     }
 
-    stocks = db.query("SELECT stock_uid, ticker FROM stocks WHERE cik IS NULL")
+    stocks = db.get_stocks_missing_cik()
     updated = 0
     for stock in stocks:
         cik = ticker_to_cik.get(stock["ticker"].upper())
@@ -141,14 +143,13 @@ def seed_ciks() -> None:
 def _fetch_company_facts(cik: str) -> dict | None:
     url = _FACTS_URL.format(cik=cik)
     try:
-        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        resp = _edgar_client.get(url, timeout=30)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"[edgar] facts fetch failed for CIK {cik}: {e}")
+        logger.debug("[edgar] facts fetch failed for CIK %s: %s", cik, e)
         return None
 
 
@@ -251,23 +252,7 @@ def _store_facts(stock_uid: int, geo: dict, customers: dict) -> int:
 def _get_pending_facts(limit: int | None = None) -> list[dict]:
     """Return stocks with a CIK whose EDGAR facts are missing or stale."""
     cutoff = (datetime.now() - timedelta(days=EDGAR_STALENESS_DAYS)).strftime("%Y-%m-%d")
-    sql = """
-        SELECT s.stock_uid, s.ticker, s.cik
-        FROM stocks s
-        WHERE s.cik IS NOT NULL
-          AND s.delisted = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM edgar_facts ef
-              WHERE ef.stock_uid = s.stock_uid
-                AND ef.fetched_at >= ?
-          )
-        ORDER BY s.ticker ASC
-    """
-    params: tuple = (cutoff,)
-    if limit is not None:
-        sql += " LIMIT ?"
-        params += (limit,)
-    return db.query(sql, params)
+    return db.get_stocks_pending_edgar_facts(cutoff, limit)
 
 
 # ── Main fetch loop ────────────────────────────────────────────────────────────
@@ -295,8 +280,7 @@ def fetch_facts(limit: int | None = None) -> None:
 
         if not geo and not customers:
             skipped += 1
-            if DEBUG_MODE:
-                print(f"[edgar] {stock['ticker']}: no geographic or customer facts in XBRL")
+            logger.debug("[edgar] %s: no geographic or customer facts in XBRL", stock['ticker'])
             continue
 
         rows = _store_facts(stock["stock_uid"], geo, customers)
@@ -364,23 +348,7 @@ def _extract_customer_pct_mentions(text: str) -> list[dict]:
 def _get_pending_filings(limit: int | None = None) -> list[dict]:
     """Return active stocks whose 10-K text facts are missing or stale."""
     cutoff = (datetime.now() - timedelta(days=EDGAR_FILING_STALENESS)).strftime("%Y-%m-%d")
-    sql = """
-        SELECT s.stock_uid, s.ticker
-        FROM stocks s
-        WHERE s.delisted = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM edgar_facts ef
-              WHERE ef.stock_uid = s.stock_uid
-                AND ef.fact_type = ?
-                AND ef.fetched_at >= ?
-          )
-        ORDER BY s.ticker ASC
-    """
-    params: tuple = (FACT_RISK_FLAGS, cutoff)
-    if limit is not None:
-        sql += " LIMIT ?"
-        params += (limit,)
-    return db.query(sql, params)
+    return db.get_stocks_pending_10k(FACT_RISK_FLAGS, cutoff, limit)
 
 
 def _with_edgartools():
@@ -439,8 +407,7 @@ def fetch_and_cache_10k(limit: int | None = None) -> None:
                 filings  = company.get_filings(form="10-K").latest(1)
                 if not filings:
                     skipped += 1
-                    if DEBUG_MODE:
-                        print(f"[edgar] {ticker}: no 10-K found")
+                    logger.debug("[edgar] %s: no 10-K found", ticker)
                     continue
 
                 accession   = str(filings.accession_number or "unknown").replace("/", "-")
@@ -521,11 +488,7 @@ def check_new_10k_filings(limit: int | None = None) -> None:
     with _with_edgartools() as _et:
         Company = _et.Company
 
-        stocks_with_cik = db.query(
-            "SELECT stock_uid, ticker, cik FROM stocks WHERE cik IS NOT NULL AND delisted = 0 ORDER BY ticker"
-        )
-        if limit is not None:
-            stocks_with_cik = stocks_with_cik[:limit]
+        stocks_with_cik = db.get_stocks_with_cik(limit)
 
         if not stocks_with_cik:
             print("No stocks with CIK found — run --seed-ciks first.")
@@ -550,18 +513,14 @@ def check_new_10k_filings(limit: int | None = None) -> None:
 
                 if not cache_file.exists():
                     # New or updated filing — clear the fact so --fetch-filings re-downloads it
-                    db.query(
-                        "DELETE FROM edgar_facts WHERE stock_uid = ? AND fact_type = ?",
-                        (stock["stock_uid"], FACT_RISK_FLAGS),
-                    )
+                    db.delete_edgar_fact_by_type(stock["stock_uid"], FACT_RISK_FLAGS)
                     print(f"  NEW [{i}] {ticker}: accession {accession} not in cache → re-queued")
                     new_found += 1
 
                 time.sleep(EDGAR_RATE_LIMIT / 2)  # metadata only — lighter rate limit
 
             except Exception as e:
-                if DEBUG_MODE:
-                    print(f"[check-new] {ticker}: {e}")
+                logger.debug("[check-new] %s: %s", ticker, e)
 
         print(f"\nDone — {checked} checked, {new_found} new filings found (will fetch on next --fetch-filings run).")
 
@@ -663,7 +622,7 @@ def _fetch_8k_filing_text(
     accn    = accession.replace("-", "")
     url     = _ARCHIVES_URL.format(cik_int=cik_int, accn=accn, doc=primary_doc)
     try:
-        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        resp = _edgar_client.get(url, timeout=30)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
@@ -672,8 +631,7 @@ def _fetch_8k_filing_text(
         _write_cached_filing("8k", ticker, cik, accession, text)
         return text
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"[edgar:8K] fetch failed {url}: {e}")
+        logger.debug("[edgar:8K] fetch failed %s: %s", url, e)
         return None
 
 
@@ -681,14 +639,13 @@ def _get_recent_8k_filings(cik: str, lookback_days: int = EDGAR_8K_LOOKBACK_DAYS
     """Return recent 8-K filings for a CIK via the submissions JSON API."""
     url = _SUBMISSIONS_URL.format(cik=cik)
     try:
-        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        resp = _edgar_client.get(url, timeout=30)
         if resp.status_code == 404:
             return []
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"[edgar:8K] submissions fetch failed for CIK {cik}: {e}")
+        logger.debug("[edgar:8K] submissions fetch failed for CIK %s: %s", cik, e)
         return []
 
     recent   = data.get("filings", {}).get("recent", {})
@@ -708,24 +665,7 @@ def _get_recent_8k_filings(cik: str, lookback_days: int = EDGAR_8K_LOOKBACK_DAYS
 def _get_pending_8k_stocks(limit: int | None = None) -> list[dict]:
     """Return active stocks with CIKs whose 8-K check is missing or stale."""
     cutoff = (datetime.now() - timedelta(days=EDGAR_8K_STALENESS_DAYS)).strftime("%Y-%m-%d")
-    sql = """
-        SELECT s.stock_uid, s.ticker, s.cik, s.sector
-        FROM stocks s
-        WHERE s.cik IS NOT NULL
-          AND s.delisted = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM edgar_facts ef
-              WHERE ef.stock_uid = s.stock_uid
-                AND ef.fact_type = ?
-                AND ef.fetched_at >= ?
-          )
-        ORDER BY s.ticker ASC
-    """
-    params: tuple = (FACT_8K_EVENTS, cutoff)
-    if limit is not None:
-        sql += " LIMIT ?"
-        params += (limit,)
-    return db.query(sql, params)
+    return db.get_stocks_pending_8k(FACT_8K_EVENTS, cutoff, limit)
 
 
 def fetch_8k_filings(limit: int | None = None) -> None:
@@ -844,8 +784,7 @@ def fetch_8k_filings(limit: int | None = None) -> None:
             print(f"  FLAG [{i}/{len(pending)}] {stock['ticker']}: {len(events_found)} event(s) — {[e['event_type'] for e in events_found]}")
         else:
             ok += 1
-            if DEBUG_MODE:
-                print(f"[edgar:8K] {stock['ticker']}: {len(filings)} 8-K(s), no supply-chain keywords")
+            logger.debug("[edgar:8K] %s: %d 8-K(s), no supply-chain keywords", stock['ticker'], len(filings))
 
     print(f"\nDone — {flagged} flagged, {ok} clean, {skipped} no recent 8-Ks, {failed} failed.")
 
@@ -878,6 +817,10 @@ def main() -> None:
     group.add_argument("--china-exposure",   type=float, metavar="MIN_PCT", help="Print stocks with China revenue >= MIN_PCT (e.g. 0.15 for 15%%)")
     parser.add_argument("--limit",           type=int,   default=None, metavar="N", help="Process at most N stocks then exit")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     db.init_db()
 

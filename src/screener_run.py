@@ -21,6 +21,7 @@ Usage:
 import argparse
 import csv
 import json
+import logging
 import os
 from datetime import datetime
 
@@ -35,6 +36,8 @@ from screener_config import (
 )
 
 _RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "Results")
+
+logger = logging.getLogger(__name__)
 
 
 # ── Signal pre-computation ─────────────────────────────────────────────────────
@@ -91,8 +94,7 @@ def _thematic_universe() -> list[dict]:
     """Return stocks in sectors/industries relevant to active supply chain events."""
     events = db.get_active_event_sectors()
     if not events:
-        if DEBUG_MODE:
-            print("[screener_run] no active events — falling back to full NSR universe")
+        logger.debug("[screener_run] no active events — falling back to full NSR universe")
         return db.get_active_stocks()
 
     # Collect all beneficiary + affected sectors/industries
@@ -215,8 +217,7 @@ def run_scan(
             scored.append(row)
         except Exception as e:
             failed += 1
-            if DEBUG_MODE:
-                print(f"[screener_run] {stock['ticker']} score failed: {e}")
+            logger.debug("[screener_run] %s score failed: %s", stock['ticker'], e)
 
     # Rank by composite_score descending
     scored.sort(key=lambda r: r["composite_score"], reverse=True)
@@ -276,6 +277,10 @@ def main() -> None:
     parser.add_argument("--top",    type=int, default=SCAN_TOP_N, metavar="N", help=f"Show top N results (default {SCAN_TOP_N})")
     parser.add_argument("--no-csv", action="store_true", help="Skip CSV export")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     db.init_db()
     run_scan(

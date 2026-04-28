@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import time
 from datetime import datetime, timedelta
 
-import requests
-
 import db
+from utils_http import HttpClient
 from screener_config import (
     DEBUG_MODE,
     COMMODITIES_USER_AGENT,
@@ -45,7 +45,9 @@ from screener_config import (
     EVENT_TYPE_NATURAL_DISASTER,
 )
 
-_HEADERS = {"User-Agent": COMMODITIES_USER_AGENT}
+_client = HttpClient({"User-Agent": COMMODITIES_USER_AGENT})
+
+logger = logging.getLogger(__name__)
 
 # Crop → affected stock sectors (used when promoting to supply_chain_events)
 _CROP_SECTORS: dict[str, list[str]] = {
@@ -92,12 +94,11 @@ def fetch_usda_crops(year: int | None = None, user_uid: int = 1) -> int:
                 "agg_level_desc":   "NATIONAL",
                 "format":           "JSON",
             }
-            r = requests.get(USDA_API_BASE, params=params, headers=_HEADERS, timeout=30)
+            r = _client.get(USDA_API_BASE, params=params, timeout=30)
             r.raise_for_status()
             data  = r.json().get("data") or []
             if not data:
-                if DEBUG_MODE:
-                    print(f"[USDA] No CONDITION data for {crop} {year}")
+                logger.debug("[USDA] No CONDITION data for %s %s", crop, year)
                 continue
 
             # latest week
@@ -108,7 +109,7 @@ def fetch_usda_crops(year: int | None = None, user_uid: int = 1) -> int:
             # also fetch PCT GOOD
             params2 = dict(params)
             params2["unit_desc"] = "PCT GOOD"
-            r2 = requests.get(USDA_API_BASE, params=params2, headers=_HEADERS, timeout=30)
+            r2 = _client.get(USDA_API_BASE, params=params2, timeout=30)
             r2.raise_for_status()
             data2 = r2.json().get("data") or []
             rows2 = sorted(data2, key=lambda x: x.get("week_ending") or "", reverse=True)
@@ -119,8 +120,7 @@ def fetch_usda_crops(year: int | None = None, user_uid: int = 1) -> int:
             signal_url     = f"usda://{crop}/{year}/{week_ending}"
 
             if db.signal_exists_by_url(PROVIDER_USDA, signal_url):
-                if DEBUG_MODE:
-                    print(f"[USDA] {crop} week {week_ending} already stored — skip")
+                logger.debug("[USDA] %s week %s already stored — skip", crop, week_ending)
                 continue
 
             # Determine severity vs. historical threshold
@@ -179,7 +179,7 @@ def fetch_eia_petroleum(user_uid: int = 1) -> int:
         try:
             url    = f"{EIA_API_BASE}/seriesid/{series_id}"
             params = {"api_key": api_key, "out": "json"}
-            r      = requests.get(url, params=params, headers=_HEADERS, timeout=30)
+            r      = _client.get(url, params=params, timeout=30)
             r.raise_for_status()
             payload = r.json()
             series  = (payload.get("response") or {}).get("data") or []
@@ -192,8 +192,7 @@ def fetch_eia_petroleum(user_uid: int = 1) -> int:
             # Sort desc, take 6 weeks
             series = sorted(series, key=lambda x: x.get("period") or "", reverse=True)[:6]
             if len(series) < 2:
-                if DEBUG_MODE:
-                    print(f"[EIA] Insufficient data for {label}")
+                logger.debug("[EIA] Insufficient data for %s", label)
                 continue
 
             latest_val  = float(series[0].get("value") or 0)
@@ -203,13 +202,11 @@ def fetch_eia_petroleum(user_uid: int = 1) -> int:
 
             signal_url = f"eia://{series_id}/{latest_period}"
             if db.signal_exists_by_url(PROVIDER_EIA, signal_url):
-                if DEBUG_MODE:
-                    print(f"[EIA] {label} {latest_period} already stored — skip")
+                logger.debug("[EIA] %s %s already stored — skip", label, latest_period)
                 continue
 
             if abs(pct_change) < OIL_SURPRISE_THRESHOLD:
-                if DEBUG_MODE:
-                    print(f"[EIA] {label} {latest_period}: change {pct_change:.1%} within threshold — skip")
+                logger.debug("[EIA] %s %s: change %s within threshold — skip", label, latest_period, f"{pct_change:.1%}")
                 continue
 
             direction = "BUILD" if pct_change > 0 else "DRAW"
@@ -333,13 +330,12 @@ def fetch_fred_commodities(user_uid: int = 1) -> int:
                 params["frequency"]          = "m"
                 params["aggregation_method"] = "avg"
 
-            r = requests.get(url, params=params, headers=_HEADERS, timeout=30)
+            r = _client.get(url, params=params, timeout=30)
             r.raise_for_status()
             observations = r.json().get("observations") or []
             valid = [o for o in observations if o.get("value") not in (".", None, "")]
             if len(valid) < 2:
-                if DEBUG_MODE:
-                    print(f"[FRED] Insufficient data for {label}")
+                logger.debug("[FRED] Insufficient data for %s", label)
                 time.sleep(EDGAR_RATE_LIMIT)
                 continue
 
@@ -351,14 +347,12 @@ def fetch_fred_commodities(user_uid: int = 1) -> int:
 
             signal_url = f"fred://{series_id}/{latest_date}"
             if db.signal_exists_by_url(PROVIDER_FRED, signal_url):
-                if DEBUG_MODE:
-                    print(f"[FRED] {label} {latest_date} already stored — skip")
+                logger.debug("[FRED] %s %s already stored — skip", label, latest_date)
                 time.sleep(EDGAR_RATE_LIMIT)
                 continue
 
             if pct_change < threshold:
-                if DEBUG_MODE:
-                    print(f"[FRED] {label} {latest_date}: {pct_change:+.1%} — below threshold, skip")
+                logger.debug("[FRED] %s %s: %s — below threshold, skip", label, latest_date, f"{pct_change:+.1%}")
                 time.sleep(EDGAR_RATE_LIMIT)
                 continue
 
@@ -400,15 +394,7 @@ def _store_commodity_signal(
     sectors: list[str],
 ) -> None:
     """Store a commodity signal against all enriched stocks in the affected sectors."""
-    # Find stocks in affected sectors — limit to large-cap to keep noise low
-    placeholders = ", ".join("?" * len(sectors))
-    stocks = db.query(
-        f"SELECT stock_uid, ticker, sector FROM stocks "
-        f"WHERE delisted = 0 AND sector IN ({placeholders}) "
-        f"AND market_cap >= 1e9 "
-        f"ORDER BY market_cap DESC LIMIT 20",
-        sectors,
-    )
+    stocks = db.get_large_cap_stocks_by_sectors(sectors)
 
     for stock in stocks:
         db.upsert_source_signal({
@@ -431,6 +417,10 @@ def main() -> None:
     parser.add_argument("--all",              action="store_true", help="Run all commodity sources")
     parser.add_argument("--year",            type=int,            help="--usda-crops: survey year (default: current)")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     db.init_db()
 

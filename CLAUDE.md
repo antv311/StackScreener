@@ -8,6 +8,12 @@ This file tells Claude Code how to work on this project. Read it before making a
 3. `ROADMAP.md` — confirm which project (P1/P2/P3/P4) owns the work and that it's in the backlog
 4. `tree.md` and `DATABASE.md` — file structure and schema
 
+**Memory files (persistent across sessions):**
+`C:\Users\tony\.claude\projects\c--Users-tony-StackScreener\memory\`
+- `MEMORY.md` — index of all memory entries (read this first)
+- Individual `.md` files per topic — project state, active focus, feedback, references
+Always read memory at session start to pick up where we left off.
+
 The project is structured as four independent projects (P1 Data Scraper, P2 DB & Server,
 P3 Bloomberg TUI, P4 Web). Each has its own entry point and backlog in `ROADMAP.md`.
 Shared core: `db.py`, `screener_config.py`, `crypto.py`, `screener.py`, `screener_run.py`.
@@ -74,7 +80,11 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `enricher.py` | P1 | Background fundamentals worker + daily IPO calendar check + dividend normalization |
 | `supply_chain.py` | P1 | Supply chain signal ingestion and sector mapping only |
 | `edgar.py` | P1 | SEC EDGAR pipeline: CIK seeding, XBRL facts, two-stage 10-K pipeline, 8-K material events |
-| `news.py` | P1 | News/media aggregation + ticker tagging |
+| `news.py` | P1 | Thin orchestrator (~230 lines) — imports from news_utils/news_podcast/news_feeds; re-exports via `__all__` |
+| `news_utils.py` | P1 | Shared news utilities — ticker tagging, whisper cache, `_ensure_dirs`, `_store_ticker_signals` |
+| `news_podcast.py` | P1 | Podcast + WSJ PDF pipeline — WSJ/MS/MF RSS + Whisper transcription + `ingest_wsj_pdf` |
+| `news_feeds.py` | P1 | Article RSS + NewsAPI + GDELT — AP, CNBC, MarketWatch, Reuters, generic connectors, `test_news_connector` |
+| `utils_http.py` | P1 | Shared HTTP client — `HttpClient` class (header injection only; modules own their `time.sleep()` calls) |
 | `llm.py` | P1 | LLM extraction pipeline — TurboQuant quantization, inference, 3 extraction tasks |
 | `inst_flow.py` | P1 | Congressional trades (Senate + House) + SEC Form 4/13F ingestion |
 | `commodities.py` | P1 | USDA crop conditions + EIA petroleum + FRED 16-series commodity prices → upstream commodity signals |
@@ -82,7 +92,13 @@ Each file owns exactly one concern. Do not cross these boundaries.
 | `wsj_fetcher.py` | P1 | Automated WSJ PDF download via Gmail IMAP + Chrome automation |
 | `scraper_app.py` | P1 | Data Scraper TUI — 21 pipeline buttons (incl. WSJ), log tail, Queue tab, Sources tab, Schedule tab |
 | `db_app.py` | P2 | Database & Server TUI — SQL shell, table browser, API server controls |
-| `app.py` | P3 | Bloomberg TUI (Textual) — UI only, no business logic |
+| `app.py` | P3 | 12-line entry point — `from tui import StackScreenerApp` only |
+| `tui/__init__.py` | P3 | `StackScreenerApp(App)` — `on_mount` init + push `LoginScreen` |
+| `tui/formatters.py` | P3 | Pure formatting helpers — `_fmt_mcap`, `_fmt_pct`, `_fmt_ratio`, `_score_bar`, `_week_dates` |
+| `tui/modals.py` | P3 | `StockQuoteModal` — 5-tab stock detail modal (Overview, Signals, History, News, Filings) |
+| `tui/tabs.py` | P3 | Research tab widgets — `ScreenerTab`, `CalendarTab`, `StockComparisonTab`, `StockPicksTab`, `NewsTab`, `ResearchReportsTab` |
+| `tui/panels.py` | P3 | Layout panels — `Sidebar`, `HeatmapTile`, `WorldMap`, `HomePanel`, `LogisticsPanel`, `SettingsPanel`, `MainScreen` |
+| `tui/screens.py` | P3 | Full-screen views — `LoginScreen`, `ChangePasswordScreen` |
 
 ---
 

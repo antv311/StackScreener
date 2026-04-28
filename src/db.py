@@ -695,6 +695,61 @@ def ipo_checked_today() -> bool:
     return row["fetched_at"][:10] == datetime.now().strftime("%Y-%m-%d")
 
 
+def get_stocks_missing_cik() -> list[dict]:
+    """Return stocks with no CIK mapped yet — used by EDGAR CIK seeder."""
+    return query("SELECT stock_uid, ticker FROM stocks WHERE cik IS NULL")
+
+
+def get_stocks_with_cik(limit: int | None = None) -> list[dict]:
+    """Return active stocks that have a CIK — used by EDGAR and inst_flow pipelines."""
+    sql = "SELECT stock_uid, ticker, cik FROM stocks WHERE cik IS NOT NULL AND delisted = 0 ORDER BY ticker"
+    if limit is not None:
+        return query(sql + " LIMIT ?", (limit,))
+    return query(sql)
+
+
+def get_active_stocks_by_market_cap(limit: int | None = None) -> list[dict]:
+    """Return active stocks ordered by market cap descending."""
+    sql = "SELECT stock_uid, ticker FROM stocks WHERE delisted = 0 ORDER BY market_cap DESC NULLS LAST"
+    if limit is not None:
+        return query(sql + " LIMIT ?", (limit,))
+    return query(sql)
+
+
+def get_active_stocks_with_names() -> list[dict]:
+    """Return active stocks that have a company_name — used for 13F name-based entity matching."""
+    return query(
+        "SELECT stock_uid, ticker, company_name FROM stocks WHERE delisted = 0 AND company_name IS NOT NULL"
+    )
+
+
+def get_large_cap_stocks_by_sectors(
+    sectors: list[str],
+    min_market_cap: float = 1e9,
+    limit: int = 20,
+) -> list[dict]:
+    """Return large-cap active stocks in the given sectors, ordered by market cap desc."""
+    if not sectors:
+        return []
+    placeholders = ", ".join("?" * len(sectors))
+    return query(
+        f"SELECT stock_uid, ticker, sector FROM stocks "
+        f"WHERE delisted = 0 AND sector IN ({placeholders}) "
+        f"AND market_cap >= ? "
+        f"ORDER BY market_cap DESC LIMIT ?",
+        tuple(sectors) + (min_market_cap, limit),
+    )
+
+
+def get_largest_stock_in_sector(sector: str) -> dict | None:
+    """Return the largest-cap active stock in a given sector."""
+    return query_one(
+        "SELECT stock_uid FROM stocks WHERE delisted = 0 AND sector = ? "
+        "ORDER BY market_cap DESC NULLS LAST LIMIT 1",
+        (sector,),
+    )
+
+
 # ── Scans ──────────────────────────────────────────────────────────────────────
 
 def create_scan(scan_mode: str, triggered_by: str = "manual") -> int:
@@ -1019,6 +1074,33 @@ def signal_exists_by_url(source: str, signal_url: str) -> bool:
     return len(rows) > 0
 
 
+def signal_exists_for_stock(stock_uid: int, source: str, signal_url: str) -> bool:
+    """Return True if a signal with this stock_uid + source + signal_url already exists."""
+    rows = query(
+        "SELECT 1 FROM source_signals WHERE stock_uid = ? AND source = ? AND signal_url = ?",
+        (stock_uid, source, signal_url),
+    )
+    return len(rows) > 0
+
+
+def get_signals_by_source(source: str) -> list[dict]:
+    """Return all source_signals rows for a given provider."""
+    return query(
+        "SELECT stock_uid, source, reason_text, raw_data FROM source_signals WHERE source = ?",
+        (source,),
+    )
+
+
+def get_signals_by_source_url_prefix(source: str, url_prefix: str, limit: int) -> list[dict]:
+    """Return recent signals for a source where signal_url starts with url_prefix."""
+    return query(
+        "SELECT reason_text FROM source_signals "
+        "WHERE source = ? AND signal_url LIKE ? "
+        "ORDER BY fetched_at DESC LIMIT ?",
+        (source, url_prefix + "%", limit),
+    )
+
+
 # ── Research Reports ───────────────────────────────────────────────────────────
 
 def insert_research_report(data: dict) -> int:
@@ -1184,6 +1266,11 @@ def get_connector_config(user_uid: int, name: str) -> dict | None:
         return _json.loads(row["connector_config"])
     except Exception:
         return None
+
+
+def get_all_api_key_rows() -> list[dict]:
+    """Return all api_keys rows for display in the Sources TUI (key remains encrypted)."""
+    return query("SELECT name, display_name, api_key, url, connector_config FROM api_keys ORDER BY name")
 
 
 # ── NewsAPI source and keyword configuration ────────────────────────────────────
@@ -1367,6 +1454,78 @@ def get_china_revenue_map() -> dict[int, float]:
         """
     )
     return {r["stock_uid"]: float(r["china_pct"]) for r in rows}
+
+
+def get_stocks_pending_edgar_facts(cutoff: str, limit: int | None = None) -> list[dict]:
+    """Return stocks with CIK whose EDGAR XBRL facts are missing or older than cutoff."""
+    sql = """
+        SELECT s.stock_uid, s.ticker, s.cik
+        FROM stocks s
+        WHERE s.cik IS NOT NULL
+          AND s.delisted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM edgar_facts ef
+              WHERE ef.stock_uid = s.stock_uid
+                AND ef.fetched_at >= ?
+          )
+        ORDER BY s.ticker ASC
+    """
+    params: tuple = (cutoff,)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return query(sql, params)
+
+
+def get_stocks_pending_10k(fact_type: str, cutoff: str, limit: int | None = None) -> list[dict]:
+    """Return active stocks whose 10-K fact (fact_type) is missing or older than cutoff."""
+    sql = """
+        SELECT s.stock_uid, s.ticker
+        FROM stocks s
+        WHERE s.delisted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM edgar_facts ef
+              WHERE ef.stock_uid = s.stock_uid
+                AND ef.fact_type = ?
+                AND ef.fetched_at >= ?
+          )
+        ORDER BY s.ticker ASC
+    """
+    params: tuple = (fact_type, cutoff)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return query(sql, params)
+
+
+def get_stocks_pending_8k(fact_type: str, cutoff: str, limit: int | None = None) -> list[dict]:
+    """Return stocks with CIK whose 8-K check is missing or older than cutoff."""
+    sql = """
+        SELECT s.stock_uid, s.ticker, s.cik, s.sector
+        FROM stocks s
+        WHERE s.cik IS NOT NULL
+          AND s.delisted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM edgar_facts ef
+              WHERE ef.stock_uid = s.stock_uid
+                AND ef.fact_type = ?
+                AND ef.fetched_at >= ?
+          )
+        ORDER BY s.ticker ASC
+    """
+    params: tuple = (fact_type, cutoff)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params += (limit,)
+    return query(sql, params)
+
+
+def delete_edgar_fact_by_type(stock_uid: int, fact_type: str) -> None:
+    """Delete all edgar_facts rows for a stock with a given fact_type."""
+    execute(
+        "DELETE FROM edgar_facts WHERE stock_uid = ? AND fact_type = ?",
+        (stock_uid, fact_type),
+    )
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────

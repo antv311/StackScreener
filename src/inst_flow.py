@@ -20,13 +20,14 @@ Usage:
 
 import argparse
 import json
+import logging
 import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, date
 
-import requests
 import yfinance as yf
+from utils_http import HttpClient
 
 import db
 from screener_config import (
@@ -63,7 +64,10 @@ from screener_config import (
     INSTITUTION_CIKS,
 )
 
-_HEADERS = {"User-Agent": EDGAR_IDENTITY}
+_client       = HttpClient({"User-Agent": EDGAR_IDENTITY})
+_edgar_client = HttpClient({"User-Agent": EDGAR_IDENTITY})
+
+logger = logging.getLogger(__name__)
 
 # Transaction type strings returned by the APIs
 _BUY_TYPES  = frozenset({"purchase", "buy", "exchange"})
@@ -91,11 +95,7 @@ def _sub_score(signal_type: str) -> float:
 
 def _already_stored(stock_uid: int, source: str, signal_url: str) -> bool:
     """Return True if this exact filing URL is already in source_signals."""
-    rows = db.query(
-        "SELECT 1 FROM source_signals WHERE stock_uid=? AND source=? AND signal_url=?",
-        (stock_uid, source, signal_url),
-    )
-    return len(rows) > 0
+    return db.signal_exists_for_stock(stock_uid, source, signal_url)
 
 
 # ── Senate ─────────────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ def fetch_senate_trades(lookback_days: int = CONGRESS_LOOKBACK_DAYS) -> int:
     """
     print(f"Fetching Senate trades (last {lookback_days} days)...")
     try:
-        resp = requests.get(SENATE_WATCHER_URL, headers=_HEADERS, timeout=30)
+        resp = _client.get(SENATE_WATCHER_URL, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -161,8 +161,7 @@ def fetch_senate_trades(lookback_days: int = CONGRESS_LOOKBACK_DAYS) -> int:
             "fetched_at":  now,
         })
         stored += 1
-        if DEBUG_MODE:
-            print(f"  [senate] {reason}")
+        logger.debug("  [senate] %s", reason)
 
     print(f"  {stored} new Senate signals stored.")
     return stored
@@ -177,7 +176,7 @@ def fetch_house_trades(lookback_days: int = CONGRESS_LOOKBACK_DAYS) -> int:
     """
     print(f"Fetching House trades (last {lookback_days} days)...")
     try:
-        resp = requests.get(HOUSE_WATCHER_URL, headers=_HEADERS, timeout=30)
+        resp = _client.get(HOUSE_WATCHER_URL, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -228,8 +227,7 @@ def fetch_house_trades(lookback_days: int = CONGRESS_LOOKBACK_DAYS) -> int:
             "fetched_at":  now,
         })
         stored += 1
-        if DEBUG_MODE:
-            print(f"  [house] {reason}")
+        logger.debug("  [house] %s", reason)
 
     print(f"  {stored} new House signals stored.")
     return stored
@@ -268,12 +266,11 @@ def _search_form4_accessions(ticker: str, start_date: str, end_date: str) -> lis
         "hits.hits.total.value": "true",
     }
     try:
-        resp = requests.get(_EFTS_SEARCH_URL, params=params, headers=_EDGAR_HEADERS, timeout=30)
+        resp = _edgar_client.get(_EFTS_SEARCH_URL, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"[form4] EFTS search failed for {ticker}: {e}")
+        logger.debug("[form4] EFTS search failed for %s: %s", ticker, e)
         return []
 
     hits = data.get("hits", {}).get("hits", [])
@@ -290,13 +287,13 @@ def _fetch_form4_xml(accession: str) -> str | None:
     filer_cik = accession.split("-")[0]
     url = f"https://www.sec.gov/Archives/edgar/data/{int(filer_cik)}/{accn_path}/doc4.xml"
     try:
-        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=30)
+        resp = _edgar_client.get(url, timeout=30)
         if resp.status_code == 404:
             # Try the filing index to find the actual XML filename
             index_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&filenum=&State=0&SIC=&dateb=&owner=include&count=1&search_text=&action=getcompany"
             # Fall back to accession-based index
             idx_url = f"https://www.sec.gov/Archives/edgar/data/{int(filer_cik)}/{accn_path}/{accn_path}-index.htm"
-            idx_resp = requests.get(idx_url, headers=_EDGAR_HEADERS, timeout=30)
+            idx_resp = _edgar_client.get(idx_url, timeout=30)
             if idx_resp.status_code != 200:
                 return None
             # Find the .xml link in the index
@@ -305,15 +302,14 @@ def _fetch_form4_xml(accession: str) -> str | None:
             if not match:
                 return None
             xml_url = "https://www.sec.gov" + match.group(1)
-            xml_resp = requests.get(xml_url, headers=_EDGAR_HEADERS, timeout=30)
+            xml_resp = _edgar_client.get(xml_url, timeout=30)
             if xml_resp.status_code != 200:
                 return None
             return xml_resp.text
         resp.raise_for_status()
         return resp.text
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"[form4] XML fetch failed for {accession}: {e}")
+        logger.debug("[form4] XML fetch failed for %s: %s", accession, e)
         return None
 
 
@@ -386,11 +382,7 @@ def fetch_form4_trades(
     Fetch recent Form 4 insider trade filings for all active stocks (with CIKs).
     Stores BUY/SELL signals in source_signals. Returns count of new signals stored.
     """
-    stocks = db.query(
-        "SELECT stock_uid, ticker, cik FROM stocks WHERE cik IS NOT NULL AND delisted = 0 ORDER BY ticker"
-    )
-    if limit is not None:
-        stocks = stocks[:limit]
+    stocks = db.get_stocks_with_cik(limit)
 
     if not stocks:
         print("No stocks with CIKs found.")
@@ -450,8 +442,7 @@ def fetch_form4_trades(
                     "fetched_at":  now,
                 })
                 stored += 1
-                if DEBUG_MODE:
-                    print(f"  [form4] {stock['ticker']}: {reason}")
+                logger.debug("  [form4] %s: %s", stock['ticker'], reason)
 
         if i % 50 == 0:
             print(f"  Progress: {i}/{len(stocks)} stocks, {stored} signals stored so far")
@@ -473,11 +464,7 @@ def fetch_options_flow(
     Returns count of new signals stored.
     """
     if tickers is None:
-        rows = db.query(
-            "SELECT stock_uid, ticker FROM stocks WHERE delisted = 0 ORDER BY market_cap DESC NULLS LAST"
-        )
-        if limit is not None:
-            rows = rows[:limit]
+        rows = db.get_active_stocks_by_market_cap(limit)
         tickers_data = [(r["stock_uid"], r["ticker"]) for r in rows]
     else:
         tickers_data = []
@@ -553,12 +540,10 @@ def fetch_options_flow(
                     "fetched_at":  now,
                 })
                 stored += 1
-                if DEBUG_MODE:
-                    print(f"  [options] {reason}")
+                logger.debug("  [options] %s", reason)
 
         except Exception as e:
-            if DEBUG_MODE:
-                print(f"[options] {ticker}: {e}")
+            logger.debug("[options] %s: %s", ticker, e)
 
     print(f"Options flow complete: {stored} unusual signals stored.")
     return stored
@@ -567,7 +552,7 @@ def fetch_options_flow(
 # ── SEC EDGAR Form 13F — Institutional Holdings ────────────────────────────────
 
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
-_13F_HEADERS     = {"User-Agent": "StackScreener antv311@gmail.com"}
+_13f_client      = HttpClient({"User-Agent": EDGAR_IDENTITY})
 
 # Normalise company names for fuzzy matching against stocks.company_name
 def _norm_name(name: str) -> str:
@@ -584,7 +569,7 @@ def _get_latest_13f_accession(cik: str) -> tuple[str, str] | None:
     """Return (accession_number, filing_date) for the most recent 13F-HR filing."""
     url = _SUBMISSIONS_URL.format(cik=cik)
     try:
-        resp = requests.get(url, headers=_13F_HEADERS, timeout=30)
+        resp = _13f_client.get(url, timeout=30)
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -610,7 +595,7 @@ def _fetch_13f_infotable(cik: str, accession: str) -> str | None:
     for fname in ("infotable.xml", "form13fInfoTable.xml", "primary_doc.xml"):
         url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn_path}/{fname}"
         try:
-            resp = requests.get(url, headers=_13F_HEADERS, timeout=30)
+            resp = _13f_client.get(url, timeout=30)
             if resp.status_code == 200:
                 return resp.text
         except Exception:
@@ -618,9 +603,9 @@ def _fetch_13f_infotable(cik: str, accession: str) -> str | None:
     # Fall back to filing index to find the XML
     idx_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik_int}&type=13F-HR&dateb=&owner=include&count=1&search_text="
     try:
-        idx_resp = requests.get(
+        idx_resp = _13f_client.get(
             f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accn_path}/{accn_path}-index.htm",
-            headers=_13F_HEADERS, timeout=30,
+            timeout=30,
         )
         if idx_resp.status_code == 200:
             match = re.search(r'href="([^"]+infotable[^"]*\.xml)"', idx_resp.text, re.IGNORECASE)
@@ -628,7 +613,7 @@ def _fetch_13f_infotable(cik: str, accession: str) -> str | None:
                 match = re.search(r'href="([^"]+form13f[^"]*\.xml)"', idx_resp.text, re.IGNORECASE)
             if match:
                 xml_url = "https://www.sec.gov" + match.group(1)
-                xml_resp = requests.get(xml_url, headers=_13F_HEADERS, timeout=30)
+                xml_resp = _13f_client.get(xml_url, timeout=30)
                 if xml_resp.status_code == 200:
                     return xml_resp.text
     except Exception:
@@ -681,9 +666,7 @@ def fetch_13f_changes(limit: int | None = None) -> int:
         institutions = institutions[:limit]
 
     # Build normalised company_name → stock lookup once
-    stocks_rows = db.query(
-        "SELECT stock_uid, ticker, company_name FROM stocks WHERE delisted = 0 AND company_name IS NOT NULL"
-    )
+    stocks_rows = db.get_active_stocks_with_names()
     name_map: dict[str, dict] = {}
     ticker_map: dict[str, dict] = {}
     for s in stocks_rows:
@@ -692,10 +675,7 @@ def fetch_13f_changes(limit: int | None = None) -> int:
         ticker_map[s["ticker"].upper()] = s
 
     # Prior holdings keyed by (institution_name, ticker)
-    prior_rows = db.query(
-        "SELECT stock_uid, source, reason_text, raw_data FROM source_signals WHERE source = ?",
-        (PROVIDER_13F,),
-    )
+    prior_rows = db.get_signals_by_source(PROVIDER_13F)
     prior: dict[tuple[str, int], dict] = {}
     for r in prior_rows:
         try:
@@ -712,16 +692,14 @@ def fetch_13f_changes(limit: int | None = None) -> int:
         result = _get_latest_13f_accession(cik)
         time.sleep(EDGAR_RATE_LIMIT)
         if not result:
-            if DEBUG_MODE:
-                print(f"[13F] {inst_name}: no 13F-HR found")
+            logger.debug("[13F] %s: no 13F-HR found", inst_name)
             continue
         accn, filing_date = result
 
         xml_text = _fetch_13f_infotable(cik, accn)
         time.sleep(EDGAR_RATE_LIMIT)
         if not xml_text:
-            if DEBUG_MODE:
-                print(f"[13F] {inst_name}: infotable XML not found")
+            logger.debug("[13F] %s: infotable XML not found", inst_name)
             continue
 
         holdings = _parse_13f_holdings(xml_text)
@@ -783,8 +761,7 @@ def fetch_13f_changes(limit: int | None = None) -> int:
                 "fetched_at":  now,
             })
             stored += 1
-            if DEBUG_MODE:
-                print(f"    → {reason}")
+            logger.debug("    → %s", reason)
 
     print(f"Form 13F complete: {stored} position change signals stored.")
     return stored
@@ -807,6 +784,10 @@ def main() -> None:
     parser.add_argument("--tickers", nargs="+", metavar="TICKER",
                         help="--options only: scan specific tickers instead of full universe")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     db.init_db()
 

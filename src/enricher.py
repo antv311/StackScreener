@@ -23,8 +23,12 @@ from datetime import datetime, timedelta
 
 import yfinance as yf
 
+import logging
+
 import db
 from screener_config import DEBUG_MODE, IPO_LOOKAHEAD_DAYS
+
+logger = logging.getLogger(__name__)
 
 _EXCHANGE_NORM: dict[str, str] = {
     "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
@@ -108,8 +112,7 @@ def _enrich_one(stock: dict) -> bool:
     try:
         info = yf.Ticker(ticker).info
         if not info or (not info.get("currentPrice") and not info.get("regularMarketPrice")):
-            if DEBUG_MODE:
-                print(f"[enricher] {ticker}: empty response, skipping")
+            logger.debug("[enricher] %s: empty response, skipping", ticker)
             return False
         db.upsert_stock(_map_info(ticker, stock["exchange"], info))
         return True
@@ -163,8 +166,7 @@ def check_upcoming_ipos() -> None:
     has a ticker symbol so it can be watched before it lists.
     """
     if db.ipo_checked_today():
-        if DEBUG_MODE:
-            print("[enricher] IPO calendar already checked today, skipping")
+        logger.debug("[enricher] IPO calendar already checked today, skipping")
         return
 
     print("Checking IPO calendar...")
@@ -293,8 +295,7 @@ def _fetch_history_one(stock: dict, period: str) -> bool:
     try:
         df = yf.Ticker(ticker).history(period=period)
         if df is None or df.empty:
-            if DEBUG_MODE:
-                print(f"[history] {ticker}: empty response, skipping")
+            logger.debug("[history] %s: empty response, skipping", ticker)
             return False
         records = [_map_history_row(stock["stock_uid"], ts, row) for ts, row in df.iterrows()]
         db.upsert_price_history_batch(records)
@@ -380,6 +381,10 @@ def main() -> None:
     parser.add_argument("--include-delisted", action="store_true",                        help="Include delisted stocks (default: skip them)")
     parser.add_argument("--force",            action="store_true",                        help="Force re-enrich all stocks by resetting staleness timestamps")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     run(
         rate_limit=args.rate,

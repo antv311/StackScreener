@@ -76,6 +76,8 @@ _COMMANDS: list[tuple[str, str, list[str]]] = [
     ("Options Flow",          "inst_flow.py --options",    [sys.executable, f"{_SRC}/inst_flow.py", "--options"]),
     ("News — All Sources",    "news.py --all",             [sys.executable, f"{_SRC}/news.py", "--all"]),
     ("News — All Connectors", "news.py --connectors",      [sys.executable, f"{_SRC}/news.py", "--newsapi-all", "--connectors"]),
+    ("News — Rio Times",      "news.py --rio-times",       [sys.executable, f"{_SRC}/news.py", "--rio-times"]),
+    ("News — Lloyd's List",   "news.py --lloyds-list",     [sys.executable, f"{_SRC}/news.py", "--lloyds-list"]),
     ("News — Classify",       "news.py --classify",        [sys.executable, f"{_SRC}/news.py", "--classify"]),
     ("USDA Crop Conditions",  "commodities.py --usda",     [sys.executable, f"{_SRC}/commodities.py", "--usda-crops"]),
     ("EIA Petroleum",         "commodities.py --eia",      [sys.executable, f"{_SRC}/commodities.py", "--eia-petroleum"]),
@@ -88,6 +90,43 @@ _COMMANDS: list[tuple[str, str, list[str]]] = [
 
 # Lookup map: command_key → argv (for scheduler firing)
 _COMMAND_MAP: dict[str, list[str]] = {cmd_key: argv for _lbl, cmd_key, argv in _COMMANDS}
+
+# Lookup map: label → command_key (for preset schedule upserts)
+_LABEL_TO_KEY: dict[str, str] = {lbl: cmd_key for lbl, cmd_key, _ in _COMMANDS}
+
+# Preset schedule groups — (label, interval_hours)
+_PRESET_SCHEDULES: dict[str, list[tuple[str, float]]] = {
+    "daily": [
+        ("News — All Sources",    24.0),
+        ("News — Classify",       24.0),
+        ("Options Flow",          24.0),
+        ("AIS Chokepoints",       24.0),
+        ("Panama Canal",          24.0),
+        ("EIA Petroleum",         24.0),
+        ("USDA Crop Conditions",  24.0),
+    ],
+    "weekly": [
+        ("Enrich Fundamentals",   168.0),
+        ("Fetch Price History",   168.0),
+        ("Form 4 Insider Trades", 168.0),
+        ("EDGAR 8-K Events",      168.0),
+        ("FRED Commodities",      168.0),
+        ("10-K Check New",        168.0),
+        ("News — Rio Times",      168.0),
+        ("WSJ Newspaper",         168.0),
+    ],
+    "monthly": [
+        ("Form 13F Holdings",     720.0),
+        ("EDGAR XBRL Facts",      720.0),
+        ("10-K Fetch & Cache",    720.0),
+        ("News — All Connectors", 720.0),
+    ],
+    "quarterly": [
+        ("Seed Stock Universe",   2160.0),
+        ("EDGAR CIKs",            2160.0),
+        ("Supply Chain Seed",     2160.0),
+    ],
+}
 
 
 # ── Schedule Modal ─────────────────────────────────────────────────────────────
@@ -405,6 +444,15 @@ class ScraperApp(App):
         height: auto;
         margin-bottom: 1;
     }
+    #schedule-preset-row {
+        height: auto;
+        margin-bottom: 1;
+        align: left middle;
+    }
+    #preset-label {
+        margin-right: 1;
+        color: $text-muted;
+    }
     #add-key-btn {
         width: auto;
     }
@@ -532,6 +580,12 @@ class ScraperApp(App):
                             yield Button("+ Add Schedule", id="add-schedule-btn", variant="primary")
                             yield Button("Toggle Enable", id="toggle-schedule-btn", variant="warning")
                             yield Button("Delete",        id="del-schedule-btn",   variant="error")
+                        with Horizontal(id="schedule-preset-row"):
+                            yield Static("Add presets:", id="preset-label")
+                            yield Button("Daily",     id="preset-daily-btn",     variant="success")
+                            yield Button("Weekly",    id="preset-weekly-btn",    variant="success")
+                            yield Button("Monthly",   id="preset-monthly-btn",   variant="success")
+                            yield Button("Quarterly", id="preset-quarterly-btn", variant="success")
                         yield Static("", id="schedule-next-label")
                         yield DataTable(id="schedule-table")
         yield Footer()
@@ -652,7 +706,7 @@ class ScraperApp(App):
         return f"[yellow]{eta} remaining[/]  ({avg:.1f}s/job avg)"
 
     def _refresh_sources(self) -> None:
-        rows = db.query("SELECT name, display_name, api_key, url, connector_config FROM api_keys ORDER BY name")
+        rows = db.get_all_api_key_rows()
         tbl  = self.query_one("#sources-table", DataTable)
         tbl.clear()
         for r in rows:
@@ -735,6 +789,17 @@ class ScraperApp(App):
             self._log(f"[green]Scheduled:[/] {result['label']} every {result['interval_hours']}h")
             self._refresh_schedules()
 
+    def _apply_preset_schedules(self, cadence: str) -> None:
+        presets = _PRESET_SCHEDULES.get(cadence, [])
+        added = 0
+        for label, hours in presets:
+            cmd_key = _LABEL_TO_KEY.get(label)
+            if cmd_key:
+                db.upsert_scheduled_job(label, cmd_key, hours)
+                added += 1
+        self._log(f"[green]Preset {cadence}:[/] {added} jobs added/updated (every {presets[0][1]:.0f}h each)")
+        self._refresh_schedules()
+
     # ── button handlers ────────────────────────────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -771,6 +836,11 @@ class ScraperApp(App):
                     self._refresh_schedules()
                 except Exception:
                     pass
+            return
+
+        if btn_id in ("preset-daily-btn", "preset-weekly-btn", "preset-monthly-btn", "preset-quarterly-btn"):
+            cadence = btn_id.replace("preset-", "").replace("-btn", "")
+            self._apply_preset_schedules(cadence)
             return
 
         if btn_id == "worker-btn":
@@ -822,7 +892,7 @@ class ScraperApp(App):
 
         if btn_id == "refresh-sources-btn":
             self._log("[bold cyan]▶ Refreshing NewsAPI source list...[/]")
-            asyncio.get_event_loop().create_task(self._run_newsapi_refresh())
+            asyncio.ensure_future(self._run_newsapi_refresh())
             return
 
         if btn_id == "add-keyword-btn":
@@ -889,7 +959,7 @@ class ScraperApp(App):
             pass
 
     def run_worker_async(self, argv: list[str]) -> None:
-        asyncio.get_event_loop().create_task(self._stream_worker(argv))
+        asyncio.ensure_future(self._stream_worker(argv))
 
     async def _stream_worker(self, argv: list[str]) -> None:
         env = {**os.environ, "PYTHONPATH": _SRC, "PYTHONIOENCODING": "utf-8"}
@@ -911,7 +981,7 @@ class ScraperApp(App):
 
     def _run_command(self, label: str, argv: list[str]) -> None:
         self._log(f"\n[bold cyan]▶ {label}[/]  {' '.join(argv[1:])}")
-        asyncio.get_event_loop().create_task(self._stream_command(label, argv))
+        asyncio.ensure_future(self._stream_command(label, argv))
 
     async def _stream_command(self, label: str, argv: list[str]) -> None:
         env = {**os.environ, "PYTHONPATH": _SRC, "PYTHONIOENCODING": "utf-8"}

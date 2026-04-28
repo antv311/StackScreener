@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import json
+import logging
 
 import db
 from screener_config import (
@@ -33,6 +34,7 @@ from screener_config import (
     SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_CRITICAL,
 )
 
+logger = logging.getLogger(__name__)
 
 # ── Tier 2 curated seed ────────────────────────────────────────────────────────
 #
@@ -1979,8 +1981,7 @@ def seed_tier2_relationships() -> None:
                 confidence=link["confidence"],
             )
             total_links += 1
-            if DEBUG_MODE:
-                print(f"  [supply_chain] linked {link['ticker']} ({link['role']}) → event {event_uid}")
+            logger.debug("[supply_chain] linked %s (%s) → event %d", link['ticker'], link['role'], event_uid)
 
     print(f"Tier 2 seed complete: {total_events} events, {total_links} links, {total_skipped} tickers skipped.")
 
@@ -2020,6 +2021,10 @@ def main() -> None:
     group.add_argument("--candidates",   type=int, metavar="EVENT_UID", help="Print Tier 1 sector-matched stock candidates for an event")
     group.add_argument("--list-events",  action="store_true",  help="List all supply chain events currently in the database")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     if args.seed_tier2:
         seed_tier2_relationships()

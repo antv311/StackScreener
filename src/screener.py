@@ -39,31 +39,29 @@ def _clamp(val: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, val))
 
 
-def _score_pe(pe: float | None) -> float:
-    """Returns 50 (not 0) on missing data so an unknown P/E is neutral rather than a penalty."""
-    if pe is None:
+def _score_inverse(val: float | None, max_val: float) -> float:
+    """Score a metric where lower is better: 100 near zero, 0 at/above max_val, 50 when missing."""
+    if val is None:
         return 50.0
-    if pe <= 0:
+    if val <= 0:
         return 0.0
-    return _clamp((PE_MAX - pe) / PE_MAX * 100.0)
+    return _clamp((max_val - val) / max_val * 100.0)
+
+
+def _score_pe(pe: float | None) -> float:
+    return _score_inverse(pe, PE_MAX)
 
 
 def _score_ev_revenue(ev_r: float | None) -> float:
-    """Returns 50 (not 0) on missing data so absence of EV/R data is neutral rather than a penalty."""
-    if ev_r is None:
-        return 50.0
-    if ev_r <= 0:
-        return 0.0
-    return _clamp((EV_REVENUE_MAX - ev_r) / EV_REVENUE_MAX * 100.0)
+    return _score_inverse(ev_r, EV_REVENUE_MAX)
 
 
 def _score_ev_ebitda(ev_e: float | None) -> float:
-    """Returns 50 (not 0) on missing data so absence of EV/EBITDA data is neutral rather than a penalty."""
-    if ev_e is None:
-        return 50.0
-    if ev_e <= 0:
-        return 0.0
-    return _clamp((EV_EBITDA_MAX - ev_e) / EV_EBITDA_MAX * 100.0)
+    return _score_inverse(ev_e, EV_EBITDA_MAX)
+
+
+def _score_peg(peg: float | None) -> float:
+    return _score_inverse(peg, PEG_MAX)
 
 
 def _score_profit_margin(margin: float | None) -> float:
@@ -72,17 +70,6 @@ def _score_profit_margin(margin: float | None) -> float:
         return 50.0
     span = MARGIN_MAX - MARGIN_MIN
     return _clamp((margin - MARGIN_MIN) / span * 100.0)
-
-
-def _score_peg(peg: float | None) -> float:
-    """Returns 50 (not 0) on missing data; negative PEG (declining earnings) scores 0 same as an extreme value."""
-    if peg is None:
-        return 50.0
-    if peg <= 0:
-        return 0.0
-    if peg >= PEG_MAX:
-        return 0.0
-    return _clamp((PEG_MAX - peg) / PEG_MAX * 100.0)
 
 
 def _score_debt_equity(de: float | None) -> float:

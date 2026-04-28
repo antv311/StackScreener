@@ -26,6 +26,7 @@ import glob
 import imaplib
 import email
 import email.utils
+import logging
 import os
 import re
 import shutil
@@ -51,6 +52,8 @@ from screener_config import (
 
 # admin user_uid — credentials are always stored against user 1
 _ADMIN_UID = 1
+
+logger = logging.getLogger(__name__)
 
 
 # ── Credential helpers ─────────────────────────────────────────────────────────
@@ -88,8 +91,7 @@ def _get_last_polled() -> datetime.date:
 
 def _set_last_polled(d: datetime.date) -> None:
     db.set_setting(_ADMIN_UID, WSJ_LAST_POLLED_KEY, d.strftime("%Y-%m-%d"))
-    if DEBUG_MODE:
-        print(f"  [wsj_fetcher] bookmark updated → {d}")
+    logger.debug("  [wsj_fetcher] bookmark updated → %s", d)
 
 
 # ── Gmail task discovery ───────────────────────────────────────────────────────
@@ -330,6 +332,10 @@ def main() -> None:
         help=f"Chrome profile name (default: {WSJ_CHROME_PROFILE_NAME})",
     )
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     if args.setup:
         setup_credentials(args.setup[0], args.setup[1])

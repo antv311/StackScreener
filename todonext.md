@@ -1,5 +1,5 @@
 # StackScreener — Next Up
-> Last updated: 2026-04-24 (milestone 10)
+> Last updated: 2026-04-28 (milestone 12)
 
 This document is the detailed task layer below `ROADMAP.md`. Where ROADMAP tracks project-level
 status and backlogs, this file tracks the specific items we are actively thinking about,
@@ -7,7 +7,34 @@ diagnosing, or queued to build next. Update the date at the top whenever this fi
 
 ---
 
-## What Was Completed This Milestone (2026-04-24, milestone 10)
+## What Was Completed This Milestone (2026-04-28, milestone 12)
+
+| Item | Files Changed | Notes |
+|---|---|---|
+| **SD crash recovery** | venv/pyvenv.cfg | SD card failed 2026-04-25; updated pyvenv.cfg `home`/`executable` to new PyManager path (`C:\Users\antv3\AppData\Local\Python\bin\`); Python bumped 3.14.2 → 3.14.4 |
+| **PyTorch reinstall** | (pip) | Installed PyTorch 2.11.0+cu128 prebuilt wheel; fixes WinError 126 `aoti_custom_ops.dll` caused by 3.14.2 → 3.14.4 version bump post-crash |
+| **asyncio fix — scraper_app.py** | scraper_app.py | Replaced 3× `asyncio.get_event_loop().create_task()` with `asyncio.ensure_future()` — silently dropped tasks in Python 3.14; fixed queue not refreshing after pipeline runs and LLM worker not streaming |
+| **Preset schedule buttons** | scraper_app.py | Added Daily/Weekly/Monthly/Quarterly preset buttons to Schedule tab; each upserts a predefined set of jobs at appropriate intervals; `_PRESET_SCHEDULES` dict + `_LABEL_TO_KEY` map added |
+| **bat files** | scraper.bat, bloomberg.bat, db.bat | Three launcher bat files at repo root — activate venv + launch respective TUI |
+| **Pipeline architecture MD** | memory/pipeline_architecture.md | Full 6-stage pipeline breakdown: Scraper (upstream/midstream/downstream by region: NA, SA, EU, Asia, Pacific), Aggregate, Index (stock_relationships schema), Digestible (local LLM context), LLM Opinion, End User |
+
+---
+
+## What Was Completed Previous Milestone (2026-04-27, milestone 11)
+
+| Item | Files Changed | Notes |
+|---|---|---|
+| **Tier 2 refactor — SQL centralization** | edgar.py, inst_flow.py, commodities.py, logistics.py, supply_chain.py, scraper_app.py, db.py | 16 raw `db.query()` calls removed across 5 P1 modules; 12+ named helpers added to `db.py` |
+| **Tier 3-A — `utils_http.py` shared HTTP client** | src/utils_http.py (NEW), edgar.py, inst_flow.py, commodities.py, logistics.py | `HttpClient` class (header injection only, no rate limiting); `import requests` removed from all 4 modules; news.py skipped (too varied per-call) |
+| **Tier 3-B — Unified logging** | enricher.py, edgar.py, inst_flow.py, news.py, commodities.py, logistics.py, supply_chain.py, screener_run.py, wsj_fetcher.py | All `if DEBUG_MODE: print(...)` replaced with `logger.debug(...)` via Python `logging` module |
+| **Tier 4-B — `_score_inverse()` helper in screener.py** | screener.py | Added `_score_inverse(val, max_val)` helper; `_score_pe`, `_score_ev_revenue`, `_score_ev_ebitda`, `_score_peg` all reduced to one-liners |
+| **Tier 4-A — Split news.py into submodules** | src/news_utils.py (NEW), src/news_podcast.py (NEW), src/news_feeds.py (NEW), news.py | news.py rewritten as ~230-line thin orchestrator; import DAG: `news_utils` ← `news_podcast`/`news_feeds` ← `news`; full `__all__` re-export for backwards compat |
+| **Tier 4-C — Split app.py into tui/ subpackage** | src/tui/__init__.py (NEW), src/tui/formatters.py (NEW), src/tui/modals.py (NEW), src/tui/tabs.py (NEW), src/tui/panels.py (NEW), src/tui/screens.py (NEW), app.py | app.py reduced to 12-line entry point; import DAG: `formatters` ← `modals` ← `tabs` ← `panels` ← `screens` ← `__init__`; no circular imports |
+| **All refactor.md tasks complete** | refactor.md | All 16 tasks across Tier 1–4 marked done |
+
+---
+
+## What Was Completed Previous Milestone (2026-04-24, milestone 10)
 
 | Item | Files Changed | Notes |
 |---|---|---|
@@ -86,19 +113,48 @@ solar, chemicals, REITs. All 134 company links resolved (0 skipped).
 
 ## Next Up — P1 Data Scraper
 
-- [ ] **Supply chain event editor** — add/edit/retire events and company links from the
-  Scraper TUI without touching the CLI or DB directly
-- [ ] **Data debugger panel** — pick any ticker, inspect all DB fields (stocks, enrichment,
-  edgar_facts, source_signals, price_history summary), flag obvious anomalies
-- [ ] **`data_source_mappings` table** — `(role, display_name, priority, enabled)` per user;
-  lets a user swap Bloomberg Shipping for AISstream by reassigning the role in the TUI without
-  editing module code; `db.get_api_key_for_role()` returns highest-priority enabled key
-- [ ] **Entity resolution** — wire LLM-extracted supplier names from `llm_10k_entities` facts
-  into `event_stocks` auto-linkage (see Gap 3 above)
-- [x] **sql_tables/ missing files** — `llm_jobs.sql`, `newsapi_keywords.sql`, `newsapi_sources.sql`, `settings.sql` created ✅
-- [x] **Schedule tab in Scraper TUI** — `scheduled_jobs` table, ScheduleModal, 60s background check, Add/Toggle/Delete ✅
-- [x] **WSJ Newspaper pipeline button** — 21st button in Scraper TUI sidebar ✅
-- [x] **`scheduled_jobs.sql`** — canonical sql_tables entry created ✅
+### Logistics — Midstream (Phase A, items 1–2)
+- [ ] **IMF PortWatch** (`logistics.py --ports`) — vessel call counts at 1,000+ ports globally
+  (NA/SA/EU/Asia/Pacific); free REST API, no key; same baseline+anomaly pattern as AIS chokepoints
+- [ ] **FAA NASSTATUS** (`logistics.py --air`) — free XML; NA air cargo hub ground stops
+  (Memphis FedEx, Louisville UPS, Anchorage transpacific)
+
+### Commodities — Upstream + Downstream (Phase A, items 3–7)
+- [ ] **Census MTIS** (`commodities.py --inventory`) — NA monthly inventory-to-sales by sector; free
+- [ ] **USDA Cold Storage** (`commodities.py --cold-storage`) — NA cold chain utilization; NASS key exists
+- [ ] **CONAB** (`commodities.py --conab`) — SA/Brazil monthly crop reports (soy/corn/coffee/sugar); free
+- [ ] **Eurostat** (`commodities.py --eurostat`) — EU quarterly warehouse/transport stats; free API
+- [ ] **AAR rail traffic** (`commodities.py --rail`) — NA weekly rail carloadings by commodity; free
+
+### Supply Chain Graph (Phase B)
+- [ ] **`stock_relationships` table** — add to `db.py` init + `_migrate_db()` + `sql_tables/stock_relationships.sql`;
+  PK=`stock_relationship_uid`, FK=`from_stock_uid`→stocks, FK=`to_stock_uid`→stocks;
+  types: supplier | customer | 3pl_provider | warehouse_tenant | competitor | subsidiary
+- [ ] **Entity resolution** (Gap 3) — `edgar.py` post-extraction step: fuzzy match `llm_10k_entities`
+  names → `stocks.company_name` → insert `stock_relationships` rows with confidence=low, source=llm_10k
+
+### Aggregate + Digestible (Phase C)
+- [ ] **`context_builder.py`** — `build_context_pack(stock_uid, lookback_days=90)` → structured dict;
+  ~2,000 token budget for 8GB VRAM; assembles fundamentals + news + SC events + inst flow + commodities + logistics + edgar
+
+### LLM Synthesis (Phase D)
+- [ ] **`llm.py` Task 4** — `generate_investment_thesis(context_pack)` → JSON report stored to
+  `research_reports`; job type `synthesize_thesis` in existing queue
+
+### TUI Enhancements (Phase E)
+- [ ] **Supply chain event editor** — add/edit/retire events and company links from TUI
+- [ ] **Data debugger panel** — pick any ticker, inspect all DB fields, flag anomalies
+- [ ] **Research Reports tab populated** — once Task 4 is live, tab shows LLM-generated reports
+- [ ] **`data_source_mappings` table** — role-based key swapping from UI (low priority)
+
+### Done
+- [x] sql_tables/ missing files (llm_jobs, newsapi_keywords, newsapi_sources, settings) ✅
+- [x] Schedule tab — `scheduled_jobs` table, ScheduleModal, 60s background check ✅
+- [x] WSJ Newspaper pipeline button (21st button) ✅
+- [x] scheduled_jobs.sql canonical entry ✅
+- [x] asyncio.ensure_future fix (3 places in scraper_app.py) ✅
+- [x] Preset schedule buttons (Daily/Weekly/Monthly/Quarterly) ✅
+- [x] bat files (scraper.bat, bloomberg.bat, db.bat) ✅
 
 ---
 

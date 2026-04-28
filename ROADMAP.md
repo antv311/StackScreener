@@ -1,6 +1,6 @@
 # StackScreener — Development Roadmap
 
-**Last updated:** 2026-04-24
+**Last updated:** 2026-04-27
 
 ---
 
@@ -96,6 +96,12 @@ and enrichment. Operators run this to keep the database current and add new sour
 | LLM job queue controls — pause/resume/cancel/priority in db.py | ✅ Complete |
 | `scraper_app.py` — Schedule tab with `scheduled_jobs` table, ScheduleModal, 60s background check | ✅ Complete |
 | Tier 1 refactoring — User-Agent centralization, config dict consolidation, SQL helpers, sys.path cleanup | ✅ Complete |
+| Tier 2 refactoring — all raw `db.query()` calls centralized into `db.py` named helpers across 5 P1 modules | ✅ Complete |
+| Tier 3-A — `src/utils_http.py` `HttpClient` shared HTTP client; `import requests` removed from edgar/inst_flow/commodities/logistics | ✅ Complete |
+| Tier 3-B — Unified `logging` module across all P1 modules; all `if DEBUG_MODE: print(...)` replaced | ✅ Complete |
+| Tier 4-A — `news.py` split into `news_utils.py`, `news_podcast.py`, `news_feeds.py` + thin orchestrator | ✅ Complete |
+| Tier 4-B — `_score_inverse()` helper extracted in `screener.py` | ✅ Complete |
+| Tier 4-C — `app.py` split into `src/tui/` subpackage (formatters, modals, tabs, panels, screens, __init__) | ✅ Complete |
 
 ---
 
@@ -190,22 +196,68 @@ and enrichment. Operators run this to keep the database current and add new sour
 
 ## P1 — Next Up
 
-### Custom Data Source Mapping
+### Logistics — Midstream Gaps
 
-Enable users to register new data sources and map them to existing pipeline roles without
-changing module code. A "Bloomberg Shipping" key tagged to role `aisstream` already works
-today.
+- [ ] **IMF PortWatch** (`logistics.py --ports`) — vessel call counts at 1,000+ ports globally
+  (NA, SA, EU, Asia, Pacific); free REST API, no key; same signal pattern as AIS chokepoints;
+  covers: LA/Long Beach, Santos, Rotterdam, Singapore, Shanghai, Busan, Sydney, Jebel Ali
+- [ ] **FAA NASSTATUS** (`logistics.py --air`) — free XML; NA air cargo hub ground stops/delays
+  (Memphis=FedEx, Louisville=UPS, Anchorage=transpacific)
+- [ ] **EUROCONTROL NM** — EU airspace flow restrictions; free public feed
 
-- [ ] `data_source_mappings` table — `(role, display_name, priority, enabled)` per user;
-  allows swapping Bloomberg for AISstream by reassigning the role mapping from the UI
-- [ ] Sources tab UI — "Map Role" button on each key row; drag-to-reorder priority;
-  enable/disable toggle so you can stage a new provider before cutting over
-- [ ] `db.get_api_key_for_role()` — returns the highest-priority enabled key for a given role
+### Commodities — Upstream + Downstream Gaps
+
+- [ ] **Census Bureau MTIS** (`commodities.py --inventory`) — NA monthly inventory-to-sales
+  ratio by sector (retail/wholesale/manufacturing); free, no key; baseline for downstream stress
+- [ ] **USDA Cold Storage** (`commodities.py --cold-storage`) — NA monthly cold storage
+  utilization (dairy/meat/frozen); free; NASS key already exists
+- [ ] **CONAB** (`commodities.py --conab`) — SA (Brazil) monthly crop production reports;
+  soy/corn/coffee/sugarcane; free API; Brazil = #1 soy + coffee + sugar + chicken exporter;
+  CONAB downgrade propagates to ADM, Bunge, Tyson, any company with protein/veg oil input costs
+- [ ] **Eurostat** (`commodities.py --eurostat`) — EU quarterly warehouse/transport statistics;
+  free API
+- [ ] **AAR rail traffic** (`commodities.py --rail`) — NA weekly rail carloadings by commodity
+  (grain, coal, chemicals, intermodal); free weekly report
+
+### Supply Chain Graph — Index Layer
+
+- [ ] **`stock_relationships` table** — company-to-company relationship graph;
+  schema: `(stock_relationship_uid PK, from_stock_uid FK, to_stock_uid FK, relationship_type,
+  confidence, source, notes, created_at, updated_at)`;
+  types: supplier | customer | 3pl_provider | warehouse_tenant | competitor | subsidiary;
+  migration in `_migrate_db()`, two covering indexes (from_ and to_ directions)
+- [ ] **Entity resolution** (`edgar.py`) — wire LLM-extracted supplier names from
+  `llm_10k_entities` facts into `stock_relationships` auto-linkage (Gap 3);
+  fuzzy match entity name → `stocks.company_name` → insert with confidence=low, source=llm_10k
+
+### Aggregate + Digestible Layer (Stages 2 + 4)
+
+- [ ] **`context_builder.py`** — `build_context_pack(stock_uid, lookback_days=90)` assembles
+  fundamentals + news + SC events + inst flow + commodities + logistics + edgar into one
+  structured dict; feeds LLM Task 4; target ~2,000 tokens to stay within 8GB VRAM budget
+
+### LLM Synthesis (Stage 5)
+
+- [ ] **`llm.py` Task 4** — `generate_investment_thesis(context_pack)` → structured JSON
+  (bull_case, bear_case, key_risks, key_catalysts, outlook_90d, confidence, signal_drivers);
+  enqueued as job type `synthesize_thesis`; output stored to `research_reports` table
+
+### Industrial REIT Downstream Seeding
+
+- [ ] Ensure PLD, COLD, REXR, EGP, FR in enrichment queue so their 8-Ks fire through
+  the LLM parser → warehouse fire / closure events auto-promoted to supply_chain_events
 
 ### Data Scraper TUI — Enhancements
 
 - [ ] Supply chain event editor — add/edit/retire events and company links from TUI
 - [ ] Data debugger — pick any ticker, inspect all DB fields, flag anomalies
+
+### Custom Data Source Mapping
+
+- [ ] `data_source_mappings` table — `(role, display_name, priority, enabled)` per user;
+  allows swapping Bloomberg for AISstream by reassigning the role mapping from the UI
+- [ ] Sources tab UI — "Map Role" button on each key row; enable/disable toggle
+- [ ] `db.get_api_key_for_role()` — returns the highest-priority enabled key for a given role
 
 ---
 
@@ -333,6 +385,7 @@ chain events, and manage watchlists from a polished terminal interface.
 
 ## P3 — Completed Work
 
+- [x] `app.py` split into `src/tui/` subpackage — 6 files (`formatters.py`, `modals.py`, `tabs.py`, `panels.py`, `screens.py`, `__init__.py`); `app.py` reduced to 12-line entry point; zero circular imports
 - [x] Textual TUI shell — login, sidebar, panel switching, settings persistence
 - [x] Screener tab — filter dropdowns, score bar, 200-row cap, in-memory filter
 - [x] Calendar tab — 7-day grid, color-coded chips, week navigation, detail table; ex_dividend and dividend_pay event chips; Dividends filter button; auto-syncs dividend dates from stocks on mount

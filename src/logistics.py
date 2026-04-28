@@ -25,9 +25,10 @@ import re
 import time
 from datetime import datetime
 
-import requests
+import logging
 
 import db
+from utils_http import HttpClient
 from screener_config import (
     DEBUG_MODE,
     LOGISTICS_USER_AGENT,
@@ -43,7 +44,9 @@ from screener_config import (
     CHOKEPOINTS,
 )
 
-_HEADERS = {"User-Agent": LOGISTICS_USER_AGENT}
+_client = HttpClient({"User-Agent": LOGISTICS_USER_AGENT})
+
+logger = logging.getLogger(__name__)
 
 # Sectors impacted by chokepoint congestion — shipping + exposed industries
 _CHOKEPOINT_SECTORS = ["Industrials", "Energy", "Materials", "Consumer Staples", "Technology"]
@@ -97,8 +100,7 @@ def fetch_chokepoint_vessel_counts(user_uid: int = 1, dry_run: bool = False) -> 
             continue
 
         if db.signal_exists_by_url(PROVIDER_AIS, signal_url):
-            if DEBUG_MODE:
-                print(f"[AIS] {name} {today} already stored — skip")
+            logger.debug("[AIS] %s %s already stored — skip", name, today)
             _store_baseline(name, vessel_count)
             continue
 
@@ -182,12 +184,7 @@ async def _sample_ais(api_key: str, duration_secs: int) -> dict[str, int]:
 def _get_baseline_count(chokepoint_name: str) -> float:
     """Return rolling average vessel count from stored source_signals for this chokepoint."""
     url_prefix = f"ais://{chokepoint_name.lower().replace(' ', '_')}/"
-    rows = db.query(
-        "SELECT reason_text FROM source_signals "
-        "WHERE source = ? AND signal_url LIKE ? "
-        "ORDER BY fetched_at DESC LIMIT ?",
-        (PROVIDER_AIS, url_prefix + "%", CHOKEPOINT_BASELINE_DAYS),
-    )
+    rows = db.get_signals_by_source_url_prefix(PROVIDER_AIS, url_prefix, CHOKEPOINT_BASELINE_DAYS)
     if not rows:
         return 0.0
     counts: list[float] = []
@@ -209,14 +206,11 @@ def _store_baseline(chokepoint_name: str, vessel_count: int) -> None:
     if db.signal_exists_by_url(PROVIDER_AIS, url):
         return
     # Use the largest Industrials stock as the anchor row
-    anchor = db.query(
-        "SELECT stock_uid FROM stocks WHERE delisted = 0 AND sector = 'Industrials' "
-        "ORDER BY market_cap DESC NULLS LAST LIMIT 1"
-    )
+    anchor = db.get_largest_stock_in_sector("Industrials")
     if not anchor:
         return
     db.upsert_source_signal({
-        "stock_uid":   anchor[0]["stock_uid"],
+        "stock_uid":   anchor["stock_uid"],
         "source":      PROVIDER_AIS,
         "signal_type": "chokepoint_baseline",
         "signal_url":  url,
@@ -237,12 +231,11 @@ def fetch_panama_draft_restriction(user_uid: int = 1) -> int:
     signal_url = f"panama://draft/{today}"
 
     if db.signal_exists_by_url(PROVIDER_PANAMA, signal_url):
-        if DEBUG_MODE:
-            print(f"[Panama] {today} already stored — skip")
+        logger.debug("[Panama] %s already stored — skip", today)
         return 0
 
     try:
-        r = requests.get(PANAMA_STATS_URL, headers=_HEADERS, timeout=30)
+        r = _client.get(PANAMA_STATS_URL, timeout=30)
         r.raise_for_status()
         html = r.text
     except Exception as exc:
@@ -323,13 +316,7 @@ def _store_logistics_signal(
     """Store source_signal rows for all shipping-exposed stocks and optionally
     create a supply_chain_events candidate.
     """
-    placeholders = ", ".join("?" * len(_CHOKEPOINT_SECTORS))
-    stocks = db.query(
-        f"SELECT stock_uid, ticker FROM stocks "
-        f"WHERE delisted = 0 AND sector IN ({placeholders}) "
-        f"AND market_cap >= 1e9 ORDER BY market_cap DESC LIMIT 30",
-        _CHOKEPOINT_SECTORS,
-    )
+    stocks = db.get_large_cap_stocks_by_sectors(_CHOKEPOINT_SECTORS, limit=30)
     for stock in stocks:
         db.upsert_source_signal({
             "stock_uid":   stock["stock_uid"],
@@ -366,6 +353,10 @@ def main() -> None:
     parser.add_argument("--all",         action="store_true", help="Run all logistics sources")
     parser.add_argument("--dry-run",     action="store_true", help="Print results without storing signals")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
     db.init_db()
 

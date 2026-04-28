@@ -163,6 +163,8 @@ NEWS_SOURCE_CNBC:           str = "cnbc_news"
 NEWS_SOURCE_MARKETWATCH:    str = "marketwatch_news"
 NEWS_SOURCE_NEWSAPI:        str = "newsapi"
 NEWS_SOURCE_GDELT:          str = "gdelt"
+NEWS_SOURCE_LLOYDS_LIST:    str = "lloyds_list"
+NEWS_SOURCE_RIO_TIMES:      str = "rio_times"
 
 NEWS_SIGNAL_TRANSCRIPT_MENTION: str = "transcript_mention"
 NEWS_SIGNAL_NEWS_HEADLINE:      str = "news_headline"
@@ -184,6 +186,15 @@ CNBC_RSS_FEEDS: list[tuple[str, str]] = [
 
 # MarketWatch RSS feed (free, no key)
 MARKETWATCH_RSS_FEED: str = "https://feeds.marketwatch.com/marketwatch/topstories/"
+
+# Rio Times Online RSS feed (free, no key — English-language Latin America/Brazil news)
+RIO_TIMES_RSS_FEED: str = "https://www.riotimesonline.com/feed/"
+
+# Lloyd's List — subscriber RSS. User pastes their personalized subscriber URL (with
+# embedded token) into api_keys.url for provider "lloyds_list". Also supports HTTP Basic
+# Auth: set connector_config = {"auth_type": "basic"} and store username as api_key.
+# The provider key is PROVIDER_LLOYDS_LIST; no public free feed exists.
+PROVIDER_LLOYDS_LIST: str = "lloyds_list"
 
 # NewsAPI.org — free tier: 100 req/day.
 NEWSAPI_BASE_URL:             str        = "https://newsapi.org/v2/everything"
@@ -482,8 +493,9 @@ KNOWN_API_ROLES: list[tuple[str, str]] = [
     (USDA_API_KEY_NAME,   "USDA NASS — crop condition reports"),
     (EIA_API_KEY_NAME,    "EIA — weekly petroleum inventory"),
     (FRED_API_KEY_NAME,   "FRED — fertilizer prices (Urea, DAP, Potash), free key"),
-    (PROVIDER_GMAIL_WSJ,  "Gmail app password — WSJ PDF delivery"),
-    (ROLE_NEWS_CONNECTOR, "News Connector — generic REST/JSON news API (add as many as you want)"),
+    (PROVIDER_GMAIL_WSJ,    "Gmail app password — WSJ PDF delivery"),
+    (PROVIDER_LLOYDS_LIST,  "Lloyd's List — subscriber RSS URL (paste personalized URL into the URL field)"),
+    (ROLE_NEWS_CONNECTOR,   "News Connector — generic REST/JSON news API (add as many as you want)"),
 ]
 
 # ── Chokepoint definitions ────────────────────────────────────────────────────

@@ -17,18 +17,30 @@ StackScreener/
 │   ├── supply_chain.py                   ← Tier 2 curated seed (27 events, 134 links) + Tier 1 sector matching
 │   ├── edgar.py                          ← SEC EDGAR: CIK seed + XBRL facts + two-stage 10-K pipeline (fetch+cache / LLM worker) + 8-K material events + --check-new-filings
 │   ├── inst_flow.py                      ← congressional trades + Form 4 insider trades + Form 13F + options flow
-│   ├── news.py                           ← podcasts (WSJ/MS/MF RSS+Whisper) + WSJ PDF + Yahoo + AP + CNBC + MarketWatch + NewsAPI + GDELT + LLM classifier
+│   ├── news.py                           ← thin orchestrator (~230 lines): imports from news_utils/news_podcast/news_feeds; re-exports all public names via __all__
+│   ├── news_utils.py                     ← shared news utilities: _ensure_dirs, _get_ticker_set, _store_ticker_signals, set_whisper_model, whisper cache
+│   ├── news_podcast.py                   ← podcast + WSJ PDF pipeline: fetch_all_podcasts, fetch_morgan_stanley, fetch_motley_fool, fetch_wsj_podcasts, ingest_wsj_pdf, ingest_pending_pdfs
+│   ├── news_feeds.py                     ← article RSS + NewsAPI + GDELT: fetch_ap_news, fetch_cnbc_news, fetch_reuters, fetch_marketwatch_news, fetch_newsapi, fetch_gdelt, fetch_generic_news_api, fetch_all_generic_news_connectors, refresh_newsapi_sources, test_news_connector
+│   ├── utils_http.py                     ← shared HTTP client: HttpClient class (header injection, no rate limiting — modules own their time.sleep() calls)
 │   ├── llm.py                            ← LLM extraction pipeline (TurboQuant Qwen2.5-7B→32B); --worker --limit N
 │   ├── commodities.py                    ← upstream commodity signals: USDA crop conditions + EIA petroleum + FRED 16-series (fertilizers/natgas/metals/agri/lumber)
-│   ├── logistics.py                      ← midstream vessel signals: AIS chokepoints (aisstream.io) + Panama Canal draft
+│   ├── logistics.py                      ← midstream vessel signals: AIS chokepoints (aisstream.io) + Panama Canal draft [--ports --air PLANNED]
 │   ├── wsj_fetcher.py                    ← automated WSJ PDF downloader: Gmail IMAP check + Chrome profile download → src/News/pdfs/ → news.py ingest
+│   ├── context_builder.py               ← [PLANNED] per-company context pack assembler → feeds LLM synthesis task
 │   ├── scraper_app.py                    ← Data Scraper TUI — 21 pipeline buttons (incl. WSJ), live log tail, Queue tab, Sources tab, Schedule tab
 │   │
 │   │  ── PROJECT 2: DATABASE & SERVER ─────────────────────────────────────
 │   ├── db_app.py                         ← Database & Server TUI — table browser, SQL shell, DB stats
 │   │
 │   │  ── PROJECT 3: BLOOMBERG TUI ──────────────────────────────────────────
-│   ├── app.py                            ← Bloomberg TUI — login, sidebar ticker search, Research tabs + Home heatmap + Logistics world map
+│   ├── app.py                            ← 12-line entry point: imports StackScreenerApp from tui/ subpackage
+│   ├── tui/                              ← Bloomberg TUI subpackage (login, sidebar, all tabs, modals, panels)
+│   │   ├── __init__.py                   ← StackScreenerApp(App) — on_mount db.init_db() + push LoginScreen
+│   │   ├── formatters.py                 ← pure formatting helpers: _fmt_mcap, _fmt_pct, _fmt_pct_abs, _fmt_ratio, _score_bar, _week_dates
+│   │   ├── modals.py                     ← StockQuoteModal (5 tabs: Overview, Signals, History, News, Filings)
+│   │   ├── tabs.py                       ← ScreenerTab, DayCell, CalendarTab, StockComparisonTab, StockPicksTab, NewsTab, ResearchReportsTab
+│   │   ├── panels.py                     ← NavItem, Sidebar, HeatmapTile, WorldMap, HomePanel, ResearchPanel, EventListItem, LogisticsPanel, SettingsPanel, MainScreen
+│   │   └── screens.py                    ← LoginScreen, ChangePasswordScreen
 │   │
 │   ├── Results/                          ← scan output (gitignored)
 │   └── News/
@@ -86,6 +98,9 @@ StackScreener/
 │       └── stackscreener_full_ui_prototype.html
 ├── models/                               ← quantized LLM weights (gitignored — generate locally)
 │   └── qwen2.5-7b-4bit/                  ← TurboQuant 4-bit output from `python src/llm.py --quantize`
+├── scraper.bat                           ← activate venv + launch scraper_app.py
+├── bloomberg.bat                         ← activate venv + launch app.py
+├── db.bat                                ← activate venv + launch db_app.py
 ├── READMETQ.md                           ← TurboQuant weight quantization reference (cksac/turboquant-model)
 ├── CONTEXT.md                            ← full project context (read at start of every session)
 ├── CLAUDE.md                             ← coding conventions for Claude Code
@@ -124,6 +139,7 @@ Tables must be created in this order (FK dependencies):
 18. newsapi_keywords            → users
 19. newsapi_sources             (no FK deps)
 20. scheduled_jobs              (no FK deps)
+21. stock_relationships         → stocks (×2: from_stock_uid, to_stock_uid)  [PLANNED]
 ```
 
 ---
